@@ -2,6 +2,7 @@
 *.slo
 *.lo
 *.o
+fast_align
 
 # Compiled Dynamic libraries
 *.so
