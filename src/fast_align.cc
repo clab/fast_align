@@ -81,7 +81,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
-      default: abort();
+      default: return false;
     }
   }
   if (input.size() == 0) return false;
@@ -257,4 +257,3 @@ int main(int argc, char** argv) {
   }
   return 0;
 }
-
