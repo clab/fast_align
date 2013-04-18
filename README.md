@@ -24,6 +24,4 @@ Run `fast_align` to see a list of command line options. Here is an example invoc
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
 
-# License
-
 
