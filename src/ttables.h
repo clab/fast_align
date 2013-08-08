@@ -2,6 +2,7 @@
 #define _TTABLES_H_
 
 #include <cmath>
+#include <fstream>
 #include <tr1/unordered_map>
 
 struct Md {
@@ -77,6 +78,20 @@ class TTable {
       }
     }
     return *this;
+  }
+  void ExportToFile(const char* filename, Dict& d) {
+    std::ofstream file(filename);
+    for (Word2Word2Double::iterator cit = ttable.begin();
+	 cit != ttable.end(); ++cit) {
+      const std::string& a = d.Convert(cit->first);
+      Word2Double& cpd = cit->second;
+      for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it) {
+	const std::string& b = d.Convert(it->first);
+	double c = it->second;
+	file << a << '\t' << b << '\t' << c << std::endl;
+      }
+    }
+    file.close();
   }
  public:
   Word2Word2Double ttable;
