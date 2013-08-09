@@ -57,6 +57,7 @@ void ParseLine(const string& line,
 }
 
 string input;
+string conditional_probability_filename = "";
 int is_reverse = 0;
 int ITERATIONS = 5;
 int favor_diagonal = 0;
@@ -77,13 +78,14 @@ struct option options[] = {
     {"variational_bayes", no_argument,       &variational_bayes, 1  },
     {"alpha",             required_argument, 0,                  'a'},
     {"no_null_word",      no_argument,       &no_null_word,      1  },
+    {"conditional_probabilities", required_argument, 0,          'c'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:N", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:", options, &oi);
     if (c == -1) break;
     switch(c) {
       case 'i': input = optarg; break;
@@ -96,6 +98,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
+      case 'c': conditional_probability_filename = optarg; break;
       default: return false;
     }
   }
@@ -112,6 +115,7 @@ int main(int argc, char** argv) {
          << "  -d: [USE] Favor alignment points close to the monotonic diagonoal\n"
          << "  -o: [USE] Optimize how close to the diagonal alignment points should be\n"
          << "  -r: Run alignment in reverse (condition on target and predict source)\n"
+         << "  -c: Output conditional probability table\n"
          << " Advanced options:\n"
          << "  -I: number of iterations in EM training (default = 5)\n"
          << "  -p: p_null parameter (default = 0.08)\n"
@@ -269,6 +273,10 @@ int main(int argc, char** argv) {
       //prob_align_null += (c0 / toks) * 0.2;
       prob_align_not_null = 1.0 - prob_align_null;
     }
+  }
+  if (!conditional_probability_filename.empty()) {
+    cerr << "conditional probabilities: " << conditional_probability_filename << endl;
+    s2t.ExportToFile(conditional_probability_filename.c_str(), d);
   }
   return 0;
 }
