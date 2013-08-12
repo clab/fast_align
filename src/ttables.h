@@ -17,6 +17,9 @@
 
 #include <cmath>
 #include <fstream>
+#include <sstream>
+#include <stdlib.h>
+#include <string>
 #include <tr1/unordered_map>
 
 struct Md {
@@ -106,6 +109,35 @@ class TTable {
       }
     }
     file.close();
+  }
+  bool ImportFromFile(const char* filename, char delim, Dict& d) {
+    std::ifstream in(filename);
+    if (!in) {
+      return false;
+    } else {
+      std::string line;
+      while(true) {
+	std::getline(in, line);
+	if (!in) break;
+	std::string sourceWord, targetWord, valueString;
+	std::stringstream stream(line);
+	
+	bool success = true;
+	success &= (std::getline(stream, sourceWord, delim) != NULL);
+	success &= (std::getline(stream, targetWord, delim) != NULL);
+	success &= (std::getline(stream, valueString, delim) != NULL);
+	
+	if (success) {
+	  unsigned source = d.Convert(sourceWord);
+	  unsigned target = d.Convert(targetWord);
+	  double value = atof(valueString.c_str());
+	  ttable[source][target] = value;
+	} else {
+	  return false;
+	}
+      }
+    }
+    return true;
   }
  public:
   Word2Word2Double ttable;
