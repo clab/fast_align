@@ -96,13 +96,13 @@ class TTable {
   void ExportToFile(const char* filename, Dict& d) {
     std::ofstream file(filename);
     for (Word2Word2Double::iterator cit = ttable.begin();
-	 cit != ttable.end(); ++cit) {
+         cit != ttable.end(); ++cit) {
       const std::string& a = d.Convert(cit->first);
       Word2Double& cpd = cit->second;
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it) {
-	const std::string& b = d.Convert(it->first);
-	double c = it->second;
-	file << a << '\t' << b << '\t' << c << std::endl;
+        const std::string& b = d.Convert(it->first);
+        double c = log(it->second);
+        file << a << '\t' << b << '\t' << c << std::endl;
       }
     }
     file.close();
