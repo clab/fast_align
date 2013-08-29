@@ -55,7 +55,7 @@ struct DiagonalAlignment {
   }
 
   static double ComputeDLogZ(const unsigned i, const unsigned m, const unsigned n, const double alpha) {
-    const double z = ComputeZ(i, n, m, alpha);
+    const double z = ComputeZ(i, m, n, alpha);
     const double split = double(i) * n / m;
     const unsigned floor = static_cast<unsigned>(split);
     const unsigned ceil = floor + 1;
