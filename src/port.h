@@ -17,7 +17,12 @@
 
 // As of OS X 10.9, it looks like C++ TR1 headers are removed from the
 // search paths. Instead, we can include C++11 headers.
-#if defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
+#if defined(__APPLE__)
+#include <AvailabilityMacros.h>
+#endif
+
+#if defined(__APPLE__) && defined(MAC_OS_X_VERSION_10_9) && \
+  MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_9
 #include <unordered_map>
 #include <functional>
 #else // Assuming older OS X, Linux or similar platforms
