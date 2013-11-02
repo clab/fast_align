@@ -38,11 +38,10 @@ class TTable {
  public:
   TTable() {}
   typedef std::unordered_map<unsigned, double> Word2Double;
-  typedef std::unordered_map<unsigned, Word2Double> Word2Word2Double;
-  inline double prob(const int& e, const int& f) const {
-    const Word2Word2Double::const_iterator cit = ttable.find(e);
-    if (cit != ttable.end()) {
-      const Word2Double& cpd = cit->second;
+  typedef std::vector<Word2Double> Word2Word2Double;
+  inline double prob(unsigned e, unsigned f) const {
+    if (e < ttable.size()) {
+      const Word2Double& cpd = ttable[e];
       const Word2Double::const_iterator it = cpd.find(f);
       if (it == cpd.end()) return 1e-9;
       return it->second;
@@ -50,20 +49,22 @@ class TTable {
       return 1e-9;
     }
   }
-  inline void Increment(const int& e, const int& f) {
+  inline void Increment(unsigned e, unsigned f) {
+    if (e >= counts.size()) counts.resize(e + 1);
     counts[e][f] += 1.0;
   }
-  inline void Increment(const int& e, const int& f, double x) {
+  inline void Increment(unsigned e, unsigned f, double x) {
+    if (e >= counts.size()) counts.resize(e + 1);
     counts[e][f] += x;
   }
   void NormalizeVB(const double alpha) {
     ttable.swap(counts);
-    for (Word2Word2Double::iterator cit = ttable.begin();
-         cit != ttable.end(); ++cit) {
+    for (unsigned i = 0; i < ttable.size(); ++i) {
       double tot = 0;
-      Word2Double& cpd = cit->second;
+      Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         tot += it->second + alpha;
+      if (!tot) tot = 1;
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         it->second = exp(Md::digamma(it->second + alpha) - Md::digamma(tot));
     }
@@ -71,12 +72,12 @@ class TTable {
   }
   void Normalize() {
     ttable.swap(counts);
-    for (Word2Word2Double::iterator cit = ttable.begin();
-         cit != ttable.end(); ++cit) {
+    for (unsigned i = 0; i < ttable.size(); ++i) {
       double tot = 0;
-      Word2Double& cpd = cit->second;
+      Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         tot += it->second;
+      if (!tot) tot = 1;
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         it->second /= tot;
     }
@@ -84,10 +85,10 @@ class TTable {
   }
   // adds counts from another TTable - probabilities remain unchanged
   TTable& operator+=(const TTable& rhs) {
-    for (Word2Word2Double::const_iterator it = rhs.counts.begin();
-         it != rhs.counts.end(); ++it) {
-      const Word2Double& cpd = it->second;
-      Word2Double& tgt = counts[it->first];
+    if (rhs.counts.size() > counts.size()) counts.resize(rhs.counts.size());
+    for (unsigned i = 0; i < rhs.counts.size(); ++i) {
+      const Word2Double& cpd = rhs.counts[i];
+      Word2Double& tgt = counts[i];
       for (Word2Double::const_iterator j = cpd.begin(); j != cpd.end(); ++j) {
         tgt[j->first] += j->second;
       }
@@ -96,10 +97,9 @@ class TTable {
   }
   void ExportToFile(const char* filename, Dict& d) {
     std::ofstream file(filename);
-    for (Word2Word2Double::iterator cit = ttable.begin();
-         cit != ttable.end(); ++cit) {
-      const std::string& a = d.Convert(cit->first);
-      Word2Double& cpd = cit->second;
+    for (unsigned i = 0; i < ttable.size(); ++i) {
+      const std::string& a = d.Convert(i);
+      Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it) {
         const std::string& b = d.Convert(it->first);
         double c = log(it->second);
