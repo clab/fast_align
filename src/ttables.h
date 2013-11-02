@@ -17,7 +17,8 @@
 
 #include <cmath>
 #include <fstream>
-#include <tr1/unordered_map>
+
+#include "src/port.h"
 
 struct Md {
   static double digamma(double x) {
@@ -36,8 +37,8 @@ struct Md {
 class TTable {
  public:
   TTable() {}
-  typedef std::tr1::unordered_map<unsigned, double> Word2Double;
-  typedef std::tr1::unordered_map<unsigned, Word2Double> Word2Word2Double;
+  typedef std::unordered_map<unsigned, double> Word2Double;
+  typedef std::unordered_map<unsigned, Word2Double> Word2Word2Double;
   inline double prob(const int& e, const int& f) const {
     const Word2Word2Double::const_iterator cit = ttable.find(e);
     if (cit != ttable.end()) {

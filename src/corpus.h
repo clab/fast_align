@@ -7,11 +7,10 @@
 #include <fstream>
 #include <vector>
 #include <set>
-#include <tr1/unordered_map>
-#include <tr1/functional>
+#include "src/port.h"
 
 class Dict {
- typedef std::tr1::unordered_map<std::string, unsigned, std::tr1::hash<std::string> > Map;
+ typedef std::unordered_map<std::string, unsigned, std::hash<std::string> > Map;
  public:
   Dict() : b0_("<bad0>") {
     words_.reserve(1000);

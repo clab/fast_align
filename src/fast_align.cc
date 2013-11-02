@@ -18,15 +18,14 @@
 #include <cmath>
 #include <utility>
 #include <fstream>
-#include <tr1/unordered_map>
 #include <getopt.h>
 
+#include "src/port.h"
 #include "src/corpus.h"
 #include "src/ttables.h"
 #include "src/da.h"
 
 using namespace std;
-using namespace std::tr1;
 
 struct PairHash {
   size_t operator()(const pair<short,short>& x) const {
