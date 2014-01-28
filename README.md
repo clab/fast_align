@@ -24,4 +24,12 @@ Run `fast_align` to see a list of command line options. Here is an example invoc
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
 
+# Output
+
+`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the *i*th word of the source is aligned to the *j*th word of the target sentence. For example, an good alignment of the above example corpus would be:
+
+    0-0 1-1 2-4 3-2 4-3 5-5 6-6
+    0-0 1-1 2-2 2-3 3-4 4-5
+    0-0 1-2 2-1 3-3 4-4 5-5
+
 
