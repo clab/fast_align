@@ -30,7 +30,7 @@ The usually recommended way to generate *target–source* alignments is:
 
     ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
-Using other tools, forward and reverse alignments can be *symmetrized* into a single alignment using intersection or union operations, as well as a variety of more heuristic criteria.
+Using other tools, forward and reverse alignments can be *symmetrized* into a single alignment using intersection or union operations, as well as with a variety of more heuristic criteria.
 
 ## Output
 
