@@ -20,9 +20,9 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 ## Compiling and using `fast_align`
 
-`fast_align` requires only a C++ compiler; it can be compiled by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
+Building `fast_align` requires only a C++ compiler; this can be done by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
 
-`fast_align` generates *asymmetric* alignments (i.e., by treating either the left or right language in the parallel corpus as language being translated into the other, slightly different alignments will be generated). The usually recommended way to generate *source–target* alignments is:
+`fast_align` generates *asymmetric* alignments (i.e., by treating either the left or right language in the parallel corpus as primary language being modeled, slightly different alignments will be generated). The usually recommended way to generate *source–target* (left language–right language) alignments is:
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
 
