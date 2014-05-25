@@ -26,11 +26,11 @@ Building `fast_align` requires only a C++ compiler; this can be done by typing `
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
 
-The usually recommended way to generate *target–source* alignments is:
+The usually recommended way to generate *target–source* alignments is to just add the `-r` (“reverse”) option:
 
     ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
-Using other tools, forward and reverse alignments can be *symmetrized* into a single alignment using intersection or union operations, as well as with a variety of more heuristic criteria.
+Using [other](http://www.cdec-decoder.org/) [tools](http://www.statmt.org/moses/), the generated forward and reverse alignments can be *symmetrized* into a (often higher quality) single alignment using intersection or union operations, as well as using a variety of more specialized heuristic criteria.
 
 ## Output
 
