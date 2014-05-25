@@ -40,5 +40,5 @@ The usual way to run `fast_align` to generate *target–source* alignments is:
 
 ## Acknowledgements
 
-The development of this software was sponsored by the U.S. Army Research Laboratory and the U.S. Army Research Ofﬁce under contract/grant number W911NF-10-1-0533.
+The development of this software was sponsored in part by the U.S. Army Research Laboratory and the U.S. Army Research Ofﬁce under contract/grant number W911NF-10-1-0533.
 
