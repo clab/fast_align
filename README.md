@@ -8,6 +8,8 @@ If you use this software, please cite:
 
 The source code in this repository is provided under the terms of the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
+`fast_align` is included in the [`cdec` translation system](http://www.cdec-decoder.org/). It uses the same model and produces identical alignments, but it has a few extra features.
+
 # Input format
 
 Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol (`|||`). An example is as follows.
@@ -26,7 +28,7 @@ Run `fast_align` to see a list of command line options. Here is an example invoc
 
 # Output
 
-`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the *i*th word of the source is aligned to the *j*th word of the target sentence. For example, an good alignment of the above example corpus would be:
+`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the <i>i</i>th word of the source is aligned to the <i>j</i>th word of the target sentence. For example, a good alignment of the above example corpus would be:
 
     0-0 1-1 2-4 3-2 4-3 5-5 6-6
     0-0 1-1 2-2 2-3 3-4 4-5
