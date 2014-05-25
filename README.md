@@ -20,11 +20,15 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 # Compiling and using `fast_align`
 
-`fast_align` requires only a C++ compiler; it can be compiled by typing `make` at the command line prompt.
+`fast_align` requires only a C++ compiler; it can be compiled by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
 
-Run `fast_align` to see a list of command line options. Here is an example invocation:
+The usual way to run `fast_align` to generate *source–target* alignments is:
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
+
+The usual way to run `fast_align` to generate *target–source* alignments is:
+
+    ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
 # Output
 
