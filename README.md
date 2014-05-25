@@ -10,7 +10,7 @@ The source code in this repository is provided under the terms of the [Apache Li
 
 `fast_align` is included in the [`cdec` translation system](http://www.cdec-decoder.org/). It uses the same model and produces identical alignments, but it has a few extra features.
 
-# Input format
+## Input format
 
 Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol with leading and trailing white space (` ||| `). An example is as follows.
 
@@ -18,7 +18,7 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
     neue Modelle werden erprobt . ||| new models are being tested .
     doch fehlen uns neue Ressourcen . ||| but we lack new resources .
 
-# Compiling and using `fast_align`
+## Compiling and using `fast_align`
 
 `fast_align` requires only a C++ compiler; it can be compiled by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
 
@@ -30,7 +30,7 @@ The usual way to run `fast_align` to generate *target–source* alignments is:
 
     ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
-# Output
+## Output
 
 `fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the <i>i</i>th word of the source is aligned to the <i>j</i>th word of the target sentence. For example, a good alignment of the above example corpus would be:
 
@@ -38,4 +38,7 @@ The usual way to run `fast_align` to generate *target–source* alignments is:
     0-0 1-1 2-2 2-3 3-4 4-5
     0-0 1-2 2-1 3-3 4-4 5-5
 
+## Acknowledgements
+
+The development of this software was sponsored by the U.S. Army Research Laboratory and the U.S. Army Research Ofﬁce under contract/grant number W911NF-10-1-0533.
 
