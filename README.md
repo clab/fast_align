@@ -12,7 +12,7 @@ The source code in this repository is provided under the terms of the [Apache Li
 
 # Input format
 
-Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol (`|||`). An example is as follows.
+Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol with leading and trailing white space (` ||| `). An example is as follows.
 
     doch jetzt ist der Held gefallen . ||| but now the hero has fallen .
     neue Modelle werden erprobt . ||| new models are being tested .
