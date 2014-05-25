@@ -34,7 +34,7 @@ Using other tools, forward and reverse alignments can be *symmetrized* into a si
 
 ## Output
 
-`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the <i>i</i>th word of the left language (by convention, the "source") is aligned to the <i>j</i>th word of the right sentence (by convention, the "target"). For example, a good alignment of the above example corpus would be:
+`fast_align` produces outputs in the widely-used `i-j` “Pharaoh format,” where a pair `i-j` indicates that the <i>i</i>th word (zero-indexed) of the left language (by convention, the *source* language) is aligned to the <i>j</i>th word of the right sentence (by convention, the *target* language). For example, a good alignment of the above German–English corpus would be:
 
     0-0 1-1 2-4 3-2 4-3 5-5 6-6
     0-0 1-1 2-2 2-3 3-4 4-5
