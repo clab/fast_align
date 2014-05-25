@@ -12,7 +12,7 @@ A variant of `fast_align` is included in the [`cdec` translation system](http://
 
 ## Input format
 
-Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol with leading and trailing white space (` ||| `). An example is as follows.
+Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol with leading and trailing white space (` ||| `). An example 3-sentence German–English parallel corpus is:
 
     doch jetzt ist der Held gefallen . ||| but now the hero has fallen .
     neue Modelle werden erprobt . ||| new models are being tested .
@@ -22,17 +22,17 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 `fast_align` requires only a C++ compiler; it can be compiled by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
 
-The usual way to run `fast_align` to generate *source–target* alignments is:
+`fast_align` generates *asymmetric* alignments (i.e., by treating either the left or right language in the parallel corpus as language being translated into the other, slightly different alignments will be generated). The usually recommended way to generate *source–target* alignments is:
 
     ./fast_align -i text.fr-en -d -o -v > forward.align
 
-The usual way to run `fast_align` to generate *target–source* alignments is:
+The usually recommended way to run `fast_align` to generate *target–source* alignments is:
 
     ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
 ## Output
 
-`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the <i>i</i>th word of the source is aligned to the <i>j</i>th word of the target sentence. For example, a good alignment of the above example corpus would be:
+`fast_align` produces outputs in the `i-j` "Pharaoh" format, where a pair `i-j` indicates that the <i>i</i>th word of the left language (by convention, the "source") is aligned to the <i>j</i>th word of the right sentence (by convention, the "target"). For example, a good alignment of the above example corpus would be:
 
     0-0 1-1 2-4 3-2 4-3 5-5 6-6
     0-0 1-1 2-2 2-3 3-4 4-5
