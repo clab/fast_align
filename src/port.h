@@ -26,12 +26,14 @@
 #include <unordered_map>
 #include <functional>
 #else // Assuming older OS X, Linux or similar platforms
-#include <tr1/unordered_map>
-#include <tr1/functional>
-namespace std {
-using tr1::unordered_map;
-using tr1::hash;
-} // namespace std
+#include <unordered_map>
+#include <functional>
+//#include <tr1/unordered_map>
+//#include <tr1/functional>
+//namespace std {
+//using tr1::unordered_map;
+//using tr1::hash;
+//} // namespace std
 #endif
 
 #endif // FAST_ALIGN_PORT_H_

@@ -49,13 +49,32 @@ class TTable {
       return 1e-9;
     }
   }
-  inline void Increment(unsigned e, unsigned f) {
-    if (e >= counts.size()) counts.resize(e + 1);
-    counts[e][f] += 1.0;
-  }
+//  inline void Increment(unsigned e, unsigned f) {
+//    if (e >= counts.size()) {
+//#pragma omp critical
+//      {
+//        counts.resize(e + 1);
+//      }
+//
+//    }
+//    counts[e][f] += 1.0;
+//  }
   inline void Increment(unsigned e, unsigned f, double x) {
-    if (e >= counts.size()) counts.resize(e + 1);
-    counts[e][f] += x;
+    if (e >= counts.size()) {
+#pragma omp critical
+      {
+        counts.resize(e + 1);
+      }
+    }
+    auto it = counts[e].find(f);
+    if (it == counts[e].end()){
+#pragma omp critical
+      {
+      counts[e][f] = x;
+      }
+    } else {
+      it->second += x;
+    }
   }
   void NormalizeVB(const double alpha) {
     ttable.swap(counts);
@@ -81,7 +100,12 @@ class TTable {
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         it->second /= tot;
     }
-    counts.clear();
+    // counts.clear();
+    for (auto& counts_e : counts) {
+      for (auto& cnt : counts_e) {
+        cnt.second = 0.0;
+      }
+    }
   }
   // adds counts from another TTable - probabilities remain unchanged
   TTable& operator+=(const TTable& rhs) {

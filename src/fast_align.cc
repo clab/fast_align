@@ -19,8 +19,9 @@
 #include <utility>
 #include <fstream>
 #include <getopt.h>
+#include <sstream>
 
-#include "src/port.h"
+//#include "src/port.h"
 #include "src/corpus.h"
 #include "src/ttables.h"
 #include "src/da.h"
@@ -105,6 +106,114 @@ bool InitCommandLine(int argc, char** argv) {
   return true;
 }
 
+//double likelihood = 0;
+//double denom = 0.0;
+//int lc = 0;
+//bool flag = false;
+//string line;
+//double c0 = 0;
+//double emp_feat = 0;
+//double toks = 0;
+
+void UpdateFromPairs(const vector<string>& lines, const int lc,
+    const int iter, const bool final_iteration, const bool use_null,
+    const unsigned kNULL, const double prob_align_not_null,
+    double* c0, double* denom, double* tot_len_ratio, double* emp_feat,
+    double* likelihood, double* toks,
+    unordered_map<pair<short, short>, unsigned, PairHash>* size_counts,
+    TTable* s2t, vector<string>* outputs) {
+  if (final_iteration) {
+    outputs->clear();
+    outputs->resize(lines.size());
+  }
+#pragma omp parallel for default(shared)
+  for (int line_idx=0; line_idx<static_cast<int>(lines.size()); ++line_idx) {
+    vector<unsigned> src, trg;
+#pragma omp critical
+    {
+    ParseLine(lines[line_idx], &src, &trg);
+    }
+    if (is_reverse) swap(src, trg);
+    if (src.size() == 0 || trg.size() == 0) {
+      cerr << "Error in line " << lc << "\n" << lines[line_idx] << endl;
+      //return 1;
+    }
+    ostringstream oss; // collect output in last iteration
+    if (iter == 0)
+      *tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
+    *denom += trg.size();
+    vector<double> probs;
+    probs.resize(src.size() + 1);
+    if (iter == 0)
+      ++(*size_counts)[make_pair<short,short>(trg.size(), src.size())];
+    bool first_al = true;  // used when printing alignments
+    *toks += trg.size();
+    for (unsigned j = 0; j < trg.size(); ++j) {
+      const unsigned& f_j = trg[j];
+      double sum = 0;
+      double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+      if (use_null) {
+        if (favor_diagonal) prob_a_i = prob_align_null;
+        probs[0] = s2t->prob(kNULL, f_j) * prob_a_i;
+        sum += probs[0];
+      }
+      double az = 0;
+      if (favor_diagonal)
+        az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+      for (unsigned i = 1; i <= src.size(); ++i) {
+        if (favor_diagonal)
+          prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
+        probs[i] = s2t->prob(src[i-1], f_j) * prob_a_i;
+        sum += probs[i];
+      }
+      if (final_iteration) {
+        double max_p = -1;
+        int max_index = -1;
+        if (use_null) {
+          max_index = 0;
+          max_p = probs[0];
+        }
+        for (unsigned i = 1; i <= src.size(); ++i) {
+          if (probs[i] > max_p) {
+            max_index = i;
+            max_p = probs[i];
+          }
+        }
+        if (max_index > 0) {
+          if (first_al) first_al = false; else oss << ' ';
+          if (is_reverse)
+            oss << j << '-' << (max_index - 1);
+          else
+            oss << (max_index - 1) << '-' << j;
+        }
+      } else {
+        if (use_null) {
+          double count = probs[0] / sum;
+          *c0 += count;
+// #pragma omp critical
+          {
+          s2t->Increment(kNULL, f_j, count); // model update
+          }
+        }
+        for (unsigned i = 1; i <= src.size(); ++i) {
+          const double p = probs[i] / sum;
+//#pragma omp critical
+          {
+              s2t->Increment(src[i-1], f_j, p); // model update
+          }
+          *emp_feat += DiagonalAlignment::Feature(j, i, trg.size(), src.size()) * p;
+        }
+      }
+      *likelihood += log(sum);
+    }
+    if (final_iteration) {
+      oss << endl;
+      (*outputs)[line_idx] = oss.str();
+    }
+  }
+}
+
+
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
     cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
@@ -134,7 +243,6 @@ int main(int argc, char** argv) {
   unordered_map<pair<short, short>, unsigned, PairHash> size_counts;
   double tot_len_ratio = 0;
   double mean_srclen_multiplier = 0;
-  vector<double> probs;
   for (int iter = 0; iter < ITERATIONS; ++iter) {
     const bool final_iteration = (iter == (ITERATIONS - 1));
     cerr << "ITERATION " << (iter + 1) << (final_iteration ? " (FINAL)" : "") << endl;
@@ -148,85 +256,41 @@ int main(int argc, char** argv) {
     int lc = 0;
     bool flag = false;
     string line;
-    string ssrc, strg;
-    vector<unsigned> src, trg;
     double c0 = 0;
     double emp_feat = 0;
     double toks = 0;
+    vector<string> buffer;
+    vector<string> outputs;
     while(true) {
       getline(in, line);
       if (!in) break;
       ++lc;
       if (lc % 1000 == 0) { cerr << '.'; flag = true; }
       if (lc %50000 == 0) { cerr << " [" << lc << "]\n" << flush; flag = false; }
-      src.clear(); trg.clear();
-      ParseLine(line, &src, &trg);
-      if (is_reverse) swap(src, trg);
-      if (src.size() == 0 || trg.size() == 0) {
-        cerr << "Error in line " << lc << "\n" << line << endl;
-        return 1;
-      }
-      if (iter == 0)
-        tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
-      denom += trg.size();
-      probs.resize(src.size() + 1);
-      if (iter == 0)
-        ++size_counts[make_pair<short,short>(trg.size(), src.size())];
-      bool first_al = true;  // used when printing alignments
-      toks += trg.size();
-      for (unsigned j = 0; j < trg.size(); ++j) {
-        const unsigned& f_j = trg[j];
-        double sum = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
-          if (favor_diagonal) prob_a_i = prob_align_null;
-          probs[0] = s2t.prob(kNULL, f_j) * prob_a_i;
-          sum += probs[0];
-        }
-        double az = 0;
-        if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
-        for (unsigned i = 1; i <= src.size(); ++i) {
-          if (favor_diagonal)
-            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
-          probs[i] = s2t.prob(src[i-1], f_j) * prob_a_i;
-          sum += probs[i];
-        }
+      buffer.push_back(line);
+
+      if (buffer.size() >= 200) {
+        UpdateFromPairs(buffer, lc, iter, final_iteration, use_null, kNULL,
+            prob_align_not_null, &c0, &denom, &tot_len_ratio, &emp_feat,
+            &likelihood, &toks, &size_counts, &s2t, &outputs);
         if (final_iteration) {
-          double max_p = -1;
-          int max_index = -1;
-          if (use_null) {
-            max_index = 0;
-            max_p = probs[0];
-          }
-          for (unsigned i = 1; i <= src.size(); ++i) {
-            if (probs[i] > max_p) {
-              max_index = i;
-              max_p = probs[i];
-            }
-          }
-          if (max_index > 0) {
-            if (first_al) first_al = false; else cout << ' ';
-            if (is_reverse)
-              cout << j << '-' << (max_index - 1);
-            else
-              cout << (max_index - 1) << '-' << j;
-          }
-        } else {
-          if (use_null) {
-            double count = probs[0] / sum;
-            c0 += count;
-            s2t.Increment(kNULL, f_j, count);
-          }
-          for (unsigned i = 1; i <= src.size(); ++i) {
-            const double p = probs[i] / sum;
-            s2t.Increment(src[i-1], f_j, p);
-            emp_feat += DiagonalAlignment::Feature(j, i, trg.size(), src.size()) * p;
+          for (const string& output : outputs) {
+            cout << output;
           }
         }
-        likelihood += log(sum);
+        buffer.clear();
       }
-      if (final_iteration) cout << endl;
+    } // end data loop
+    if (buffer.size() > 0) {
+      UpdateFromPairs(buffer, lc, iter, final_iteration, use_null, kNULL,
+          prob_align_not_null, &c0, &denom, &tot_len_ratio, &emp_feat,
+          &likelihood, &toks, &size_counts, &s2t, &outputs);
+      if (final_iteration) {
+        for (const string& output : outputs) {
+          cout << output;
+        }
+      }
+      buffer.clear();
     }
 
     // log(e) = 1.0
