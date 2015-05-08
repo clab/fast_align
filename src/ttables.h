@@ -15,8 +15,11 @@
 #ifndef _TTABLES_H_
 #define _TTABLES_H_
 
+#include <cassert>
 #include <cmath>
 #include <fstream>
+#include <iostream>
+#include <google/sparse_hash_map>
 
 #include "src/port.h"
 
@@ -36,61 +39,47 @@ struct Md {
 
 class TTable {
  public:
-  TTable() {}
-  typedef std::unordered_map<unsigned, double> Word2Double;
+  TTable() : frozen_(false), probs_initialized_(false) {}
+//  typedef std::unordered_map<unsigned, double> Word2Double;
+  typedef google::sparse_hash_map<unsigned, float> Word2Double;
+
   typedef std::vector<Word2Double> Word2Word2Double;
-  inline double prob(unsigned e, unsigned f) const {
-    if (e < ttable.size()) {
-      const Word2Double& cpd = ttable[e];
-      const Word2Double::const_iterator it = cpd.find(f);
-      if (it == cpd.end()) return 1e-9;
-      return it->second;
-    } else {
-      return 1e-9;
-    }
+
+  inline double prob(const unsigned e, const unsigned f) const {
+    return probs_initialized_ ? ttable[e].find(f)->second : 1e-9;
   }
-//  inline void Increment(unsigned e, unsigned f) {
-//    if (e >= counts.size()) {
-//#pragma omp critical
-//      {
-//        counts.resize(e + 1);
-//      }
-//
-//    }
-//    counts[e][f] += 1.0;
-//  }
-  inline void Increment(unsigned e, unsigned f, double x) {
-    if (e >= counts.size()) {
-#pragma omp critical
-      {
+
+  inline void Insert(const unsigned e, const unsigned f) {
+    // NOT thread safe
+    if (e >= counts.size())
         counts.resize(e + 1);
-      }
-    }
-    auto it = counts[e].find(f);
-    if (it == counts[e].end()){
-#pragma omp critical
-      {
-      counts[e][f] = x;
-      }
-    } else {
-      it->second += x;
-    }
+    counts[e][f] = 0;
   }
+
+  inline void Increment(const unsigned e, const unsigned f, const double x) {
+    counts[e].find(f)->second += x; // Ignore race conditions here.
+  }
+
   void NormalizeVB(const double alpha) {
     ttable.swap(counts);
+#pragma omp parallel for schedule(dynamic)
     for (unsigned i = 0; i < ttable.size(); ++i) {
       double tot = 0;
       Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         tot += it->second + alpha;
       if (!tot) tot = 1;
+      const double digamma_tot = Md::digamma(tot);
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
-        it->second = exp(Md::digamma(it->second + alpha) - Md::digamma(tot));
+        it->second = exp(Md::digamma(it->second + alpha) - digamma_tot);
     }
-    counts.clear();
+    ClearCounts();
+    probs_initialized_ = true;
   }
+
   void Normalize() {
     ttable.swap(counts);
+#pragma omp parallel for schedule(dynamic)
     for (unsigned i = 0; i < ttable.size(); ++i) {
       double tot = 0;
       Word2Double& cpd = ttable[i];
@@ -100,12 +89,21 @@ class TTable {
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
         it->second /= tot;
     }
-    // counts.clear();
-    for (auto& counts_e : counts) {
-      for (auto& cnt : counts_e) {
-        cnt.second = 0.0;
+    ClearCounts();
+    probs_initialized_ = true;
+  }
+
+  void Freeze() {
+    // duplicate all values in counts into ttable
+    // later updates to both are semi-threadsafe
+    assert (!frozen_);
+    if (!frozen_) {
+      ttable.resize(counts.size());
+      for (unsigned i = 0; i < counts.size(); ++i) {
+        ttable[i] = counts[i];
       }
     }
+    frozen_ = true;
   }
   // adds counts from another TTable - probabilities remain unchanged
   TTable& operator+=(const TTable& rhs) {
@@ -132,9 +130,20 @@ class TTable {
     }
     file.close();
   }
- public:
+ private:
+  void ClearCounts() {
+#pragma omp parallel for schedule(dynamic)
+    for (size_t i=0; i<counts.size();++i) {
+      for (auto& cnt : counts[i]) {
+        cnt.second = 0.0;
+      }
+    }
+  }
+
   Word2Word2Double ttable;
   Word2Word2Double counts;
+  bool frozen_; // Disallow new e,f pairs to be added to counts
+  bool probs_initialized_; // If we can use the values in probs
 };
 
 #endif
