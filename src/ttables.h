@@ -49,6 +49,12 @@ class TTable {
     return probs_initialized_ ? ttable[e].find(f)->second : 1e-9;
   }
 
+  inline void SetMaxE(const unsigned e) {
+    // NOT thread safe
+    if (e >= counts.size())
+        counts.resize(e + 1);
+  }
+
   inline void Insert(const unsigned e, const unsigned f) {
     // NOT thread safe
     if (e >= counts.size())

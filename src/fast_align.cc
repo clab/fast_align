@@ -67,6 +67,7 @@ int optimize_tension = 0;
 int variational_bayes = 0;
 double alpha = 0.01;
 int no_null_word = 0;
+size_t thread_buffer_size = 10000;
 struct option options[] = {
     {"input",             required_argument, 0,                  'i'},
     {"reverse",           no_argument,       &is_reverse,        1  },
@@ -79,13 +80,14 @@ struct option options[] = {
     {"alpha",             required_argument, 0,                  'a'},
     {"no_null_word",      no_argument,       &no_null_word,      1  },
     {"conditional_probabilities", required_argument, 0,          'c'},
+    {"thread_buffer_size", required_argument, 0,                 'b'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:b", options, &oi);
     if (c == -1) break;
     switch(c) {
       case 'i': input = optarg; break;
@@ -99,6 +101,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
       case 'c': conditional_probability_filename = optarg; break;
+      case 'b': thread_buffer_size = atoi(optarg); break;
       default: return false;
     }
   }
@@ -199,6 +202,18 @@ void UpdateFromPairs(const vector<string>& lines, const int lc, const int iter,
   *likelihood += likelihood_;
 }
 
+inline void AddTranslationOptions(vector<vector<unsigned> >& insert_buffer,
+    TTable* s2t) {
+  s2t->SetMaxE(insert_buffer.size()-1);
+#pragma omp parallel for schedule(dynamic)
+  for (unsigned e = 0; e < insert_buffer.size(); ++e) {
+    for (unsigned f : insert_buffer[e]) {
+      s2t->Insert(e, f);
+    }
+    insert_buffer[e].clear();
+  }
+}
+
 void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
     double* n_target_tokens, double* tot_len_ratio,
     vector<pair<pair<short, short>, unsigned>>* size_counts) {
@@ -207,6 +222,8 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
     cerr << "Can't read " << input << endl;
   }
   unordered_map<pair<short, short>, unsigned, PairHash> size_counts_;
+  vector<vector<unsigned>> insert_buffer;
+  size_t insert_buffer_items = 0;
   double mean_srclen_multiplier = 0;
   vector<unsigned> src, trg;
   string line;
@@ -234,15 +251,24 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
       }
     }
     for (const unsigned e : src) {
-      for (const unsigned f : trg) {
-        s2t->Insert(e, f);
+      if (e >= insert_buffer.size()) {
+        insert_buffer.resize(e+1);
       }
+      for (const unsigned f : trg) {
+        insert_buffer[e].push_back(f);
+      }
+      insert_buffer_items += trg.size();
+    }
+    if (insert_buffer_items > thread_buffer_size * 100) {
+      insert_buffer_items = 0;
+      AddTranslationOptions(insert_buffer, s2t);
     }
     ++size_counts_[make_pair<short, short>(trg.size(), src.size())];
   }
   for (const auto& p : size_counts_) {
     size_counts->push_back(p);
   }
+  AddTranslationOptions(insert_buffer, s2t);
 
   mean_srclen_multiplier = (*tot_len_ratio) / lc;
   if (flag) {
@@ -274,7 +300,7 @@ int main(int argc, char** argv) {
     cerr << "--alpha must be > 0\n";
     return 1;
   }
-  double prob_align_not_null = 1.0 - prob_align_null;
+  const double prob_align_not_null = 1.0 - prob_align_null;
   const unsigned kNULL = d.Convert("<eps>");
   TTable s2t, t2s;
   vector<pair<pair<short, short>, unsigned>> size_counts;
@@ -299,7 +325,6 @@ int main(int argc, char** argv) {
     string line;
     double c0 = 0;
     double emp_feat = 0;
-    // const double toks = n_target_tokens;
     vector<string> buffer;
     vector<string> outputs;
     while(true) {
@@ -310,7 +335,7 @@ int main(int argc, char** argv) {
       if (lc %50000 == 0) { cerr << " [" << lc << "]\n" << flush; flag = false; }
       buffer.push_back(line);
 
-      if (buffer.size() >= 200) {
+      if (buffer.size() >= thread_buffer_size) {
         UpdateFromPairs(buffer, lc, iter, final_iteration, use_null, kNULL,
             prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
         if (final_iteration) {
@@ -371,7 +396,6 @@ int main(int argc, char** argv) {
         s2t.Normalize();
       //prob_align_null *= 0.8; // XXX
       //prob_align_null += (c0 / toks) * 0.2;
-      prob_align_not_null = 1.0 - prob_align_null;
     }
   }
   if (!conditional_probability_filename.empty()) {
