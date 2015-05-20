@@ -41,7 +41,7 @@ class TTable {
  public:
   TTable() : frozen_(false), probs_initialized_(false) {}
 //  typedef std::unordered_map<unsigned, double> Word2Double;
-  typedef google::sparse_hash_map<unsigned, float> Word2Double;
+  typedef google::sparse_hash_map<unsigned, double> Word2Double;
 
   typedef std::vector<Word2Double> Word2Word2Double;
 
