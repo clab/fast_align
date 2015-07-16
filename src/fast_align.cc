@@ -19,8 +19,9 @@
 #include <utility>
 #include <fstream>
 #include <getopt.h>
+#include <sstream>
 
-#include "src/port.h"
+//#include "src/port.h"
 #include "src/corpus.h"
 #include "src/ttables.h"
 #include "src/da.h"
@@ -28,8 +29,8 @@
 using namespace std;
 
 struct PairHash {
-  size_t operator()(const pair<short,short>& x) const {
-    return (unsigned short)x.first << 16 | (unsigned)x.second;
+  size_t operator()(const pair<short, short>& x) const {
+    return (unsigned short) x.first << 16 | (unsigned) x.second;
   }
 };
 
@@ -39,18 +40,18 @@ void ParseLine(const string& line,
               vector<unsigned>* src,
               vector<unsigned>* trg) {
   static const unsigned kDIV = d.Convert("|||");
-  static vector<unsigned> tmp;
+  vector<unsigned> tmp;
   src->clear();
   trg->clear();
   d.ConvertWhitespaceDelimitedLine(line, &tmp);
   unsigned i = 0;
-  while(i < tmp.size() && tmp[i] != kDIV) {
+  while (i < tmp.size() && tmp[i] != kDIV) {
     src->push_back(tmp[i]);
     ++i;
   }
   if (i < tmp.size() && tmp[i] == kDIV) {
     ++i;
-    for (; i < tmp.size() ; ++i)
+    for (; i < tmp.size(); ++i)
       trg->push_back(tmp[i]);
   }
 }
@@ -66,6 +67,7 @@ int optimize_tension = 0;
 int variational_bayes = 0;
 double alpha = 0.01;
 int no_null_word = 0;
+size_t thread_buffer_size = 10000;
 struct option options[] = {
     {"input",             required_argument, 0,                  'i'},
     {"reverse",           no_argument,       &is_reverse,        1  },
@@ -78,13 +80,14 @@ struct option options[] = {
     {"alpha",             required_argument, 0,                  'a'},
     {"no_null_word",      no_argument,       &no_null_word,      1  },
     {"conditional_probabilities", required_argument, 0,          'c'},
+    {"thread_buffer_size", required_argument, 0,                 'b'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:b", options, &oi);
     if (c == -1) break;
     switch(c) {
       case 'i': input = optarg; break;
@@ -98,11 +101,180 @@ bool InitCommandLine(int argc, char** argv) {
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
       case 'c': conditional_probability_filename = optarg; break;
+      case 'b': thread_buffer_size = atoi(optarg); break;
       default: return false;
     }
   }
   if (input.size() == 0) return false;
   return true;
+}
+
+void UpdateFromPairs(const vector<string>& lines, const int lc, const int iter,
+    const bool final_iteration, const bool use_null, const unsigned kNULL,
+    const double prob_align_not_null, double* c0, double* emp_feat,
+    double* likelihood, TTable* s2t, vector<string>* outputs) {
+  if (final_iteration) {
+    outputs->clear();
+    outputs->resize(lines.size());
+  }
+  double emp_feat_ = 0.0;
+  double c0_ = 0.0;
+  double likelihood_ = 0.0;
+#pragma omp parallel for schedule(dynamic) reduction(+:emp_feat_,c0_,likelihood_)
+  for (int line_idx = 0; line_idx < static_cast<int>(lines.size());
+      ++line_idx) {
+    vector<unsigned> src, trg;
+    ParseLine(lines[line_idx], &src, &trg);
+    if (is_reverse)
+      swap(src, trg);
+    if (src.size() == 0 || trg.size() == 0) {
+      cerr << "Error in line " << lc << "\n" << lines[line_idx] << endl;
+      //return 1;
+    }
+    ostringstream oss; // collect output in last iteration
+    vector<double> probs(src.size() + 1);
+    bool first_al = true;  // used when printing alignments
+    for (unsigned j = 0; j < trg.size(); ++j) {
+      const unsigned& f_j = trg[j];
+      double sum = 0;
+      double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+      if (use_null) {
+        if (favor_diagonal)
+          prob_a_i = prob_align_null;
+        probs[0] = s2t->prob(kNULL, f_j) * prob_a_i;
+        sum += probs[0];
+      }
+      double az = 0;
+      if (favor_diagonal)
+        az = DiagonalAlignment::ComputeZ(j + 1, trg.size(), src.size(),
+            diagonal_tension) / prob_align_not_null;
+      for (unsigned i = 1; i <= src.size(); ++i) {
+        if (favor_diagonal)
+          prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(),
+              src.size(), diagonal_tension) / az;
+        probs[i] = s2t->prob(src[i - 1], f_j) * prob_a_i;
+        sum += probs[i];
+      }
+      if (final_iteration) {
+        double max_p = -1;
+        int max_index = -1;
+        if (use_null) {
+          max_index = 0;
+          max_p = probs[0];
+        }
+        for (unsigned i = 1; i <= src.size(); ++i) {
+          if (probs[i] > max_p) {
+            max_index = i;
+            max_p = probs[i];
+          }
+        }
+        if (max_index > 0) {
+          if (first_al)
+            first_al = false;
+          else
+            oss << ' ';
+          if (is_reverse)
+            oss << j << '-' << (max_index - 1);
+          else
+            oss << (max_index - 1) << '-' << j;
+        }
+      } else {
+        if (use_null) {
+          double count = probs[0] / sum;
+          c0_ += count;
+          s2t->Increment(kNULL, f_j, count);
+        }
+        for (unsigned i = 1; i <= src.size(); ++i) {
+          const double p = probs[i] / sum;
+          s2t->Increment(src[i - 1], f_j, p);
+          emp_feat_ += DiagonalAlignment::Feature(j, i, trg.size(), src.size()) * p;
+        }
+      }
+      likelihood_ += log(sum);
+    }
+    if (final_iteration) {
+      oss << endl;
+      (*outputs)[line_idx] = oss.str();
+    }
+  }
+  *emp_feat += emp_feat_;
+  *c0 += c0_;
+  *likelihood += likelihood_;
+}
+
+inline void AddTranslationOptions(vector<vector<unsigned> >& insert_buffer,
+    TTable* s2t) {
+  s2t->SetMaxE(insert_buffer.size()-1);
+#pragma omp parallel for schedule(dynamic)
+  for (unsigned e = 0; e < insert_buffer.size(); ++e) {
+    for (unsigned f : insert_buffer[e]) {
+      s2t->Insert(e, f);
+    }
+    insert_buffer[e].clear();
+  }
+}
+
+void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
+    double* n_target_tokens, double* tot_len_ratio,
+    vector<pair<pair<short, short>, unsigned>>* size_counts) {
+  ifstream in(input.c_str());
+  if (!in) {
+    cerr << "Can't read " << input << endl;
+  }
+  unordered_map<pair<short, short>, unsigned, PairHash> size_counts_;
+  vector<vector<unsigned>> insert_buffer;
+  size_t insert_buffer_items = 0;
+  double mean_srclen_multiplier = 0;
+  vector<unsigned> src, trg;
+  string line;
+  bool flag = false;
+  int lc = 0;
+  cerr << "INITIAL PASS " << endl;
+  while (true) {
+    getline(in, line);
+    if (!in)
+      break;
+    lc++;
+    if (lc % 1000 == 0) { cerr << '.'; flag = true; }
+    if (lc %50000 == 0) { cerr << " [" << lc << "]\n" << flush; flag = false; }
+    ParseLine(line, &src, &trg);
+    if (is_reverse)
+      swap(src, trg);
+    if (src.size() == 0 || trg.size() == 0) {
+      cerr << "Error in line " << lc << "\n" << line << endl;
+    }
+    *tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
+    *n_target_tokens += trg.size();
+    if (use_null) {
+      for (const unsigned f : trg) {
+        s2t->Insert(kNULL, f);
+      }
+    }
+    for (const unsigned e : src) {
+      if (e >= insert_buffer.size()) {
+        insert_buffer.resize(e+1);
+      }
+      for (const unsigned f : trg) {
+        insert_buffer[e].push_back(f);
+      }
+      insert_buffer_items += trg.size();
+    }
+    if (insert_buffer_items > thread_buffer_size * 100) {
+      insert_buffer_items = 0;
+      AddTranslationOptions(insert_buffer, s2t);
+    }
+    ++size_counts_[make_pair<short, short>(trg.size(), src.size())];
+  }
+  for (const auto& p : size_counts_) {
+    size_counts->push_back(p);
+  }
+  AddTranslationOptions(insert_buffer, s2t);
+
+  mean_srclen_multiplier = (*tot_len_ratio) / lc;
+  if (flag) {
+    cerr << endl;
+  }
+  cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
 int main(int argc, char** argv) {
@@ -123,18 +295,21 @@ int main(int argc, char** argv) {
          << "  -T: starting lambda for diagonal distance parameter (default = 4)\n";
     return 1;
   }
-  bool use_null = !no_null_word;
+  const bool use_null = !no_null_word;
   if (variational_bayes && alpha <= 0.0) {
     cerr << "--alpha must be > 0\n";
     return 1;
   }
-  double prob_align_not_null = 1.0 - prob_align_null;
+  const double prob_align_not_null = 1.0 - prob_align_null;
   const unsigned kNULL = d.Convert("<eps>");
   TTable s2t, t2s;
-  unordered_map<pair<short, short>, unsigned, PairHash> size_counts;
+  vector<pair<pair<short, short>, unsigned>> size_counts;
   double tot_len_ratio = 0;
-  double mean_srclen_multiplier = 0;
-  vector<double> probs;
+  double n_target_tokens = 0;
+
+  InitialPass(kNULL, use_null, &s2t, &n_target_tokens, &tot_len_ratio, &size_counts);
+  s2t.Freeze();
+
   for (int iter = 0; iter < ITERATIONS; ++iter) {
     const bool final_iteration = (iter == (ITERATIONS - 1));
     cerr << "ITERATION " << (iter + 1) << (final_iteration ? " (FINAL)" : "") << endl;
@@ -144,105 +319,56 @@ int main(int argc, char** argv) {
       return 1;
     }
     double likelihood = 0;
-    double denom = 0.0;
+    const double denom = n_target_tokens;
     int lc = 0;
     bool flag = false;
     string line;
-    string ssrc, strg;
-    vector<unsigned> src, trg;
     double c0 = 0;
     double emp_feat = 0;
-    double toks = 0;
+    vector<string> buffer;
+    vector<string> outputs;
     while(true) {
       getline(in, line);
       if (!in) break;
       ++lc;
       if (lc % 1000 == 0) { cerr << '.'; flag = true; }
       if (lc %50000 == 0) { cerr << " [" << lc << "]\n" << flush; flag = false; }
-      src.clear(); trg.clear();
-      ParseLine(line, &src, &trg);
-      if (is_reverse) swap(src, trg);
-      if (src.size() == 0 || trg.size() == 0) {
-        cerr << "Error in line " << lc << "\n" << line << endl;
-        return 1;
-      }
-      if (iter == 0)
-        tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
-      denom += trg.size();
-      probs.resize(src.size() + 1);
-      if (iter == 0)
-        ++size_counts[make_pair<short,short>(trg.size(), src.size())];
-      bool first_al = true;  // used when printing alignments
-      toks += trg.size();
-      for (unsigned j = 0; j < trg.size(); ++j) {
-        const unsigned& f_j = trg[j];
-        double sum = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
-          if (favor_diagonal) prob_a_i = prob_align_null;
-          probs[0] = s2t.prob(kNULL, f_j) * prob_a_i;
-          sum += probs[0];
-        }
-        double az = 0;
-        if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
-        for (unsigned i = 1; i <= src.size(); ++i) {
-          if (favor_diagonal)
-            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
-          probs[i] = s2t.prob(src[i-1], f_j) * prob_a_i;
-          sum += probs[i];
-        }
+      buffer.push_back(line);
+
+      if (buffer.size() >= thread_buffer_size) {
+        UpdateFromPairs(buffer, lc, iter, final_iteration, use_null, kNULL,
+            prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
         if (final_iteration) {
-          double max_p = -1;
-          int max_index = -1;
-          if (use_null) {
-            max_index = 0;
-            max_p = probs[0];
-          }
-          for (unsigned i = 1; i <= src.size(); ++i) {
-            if (probs[i] > max_p) {
-              max_index = i;
-              max_p = probs[i];
-            }
-          }
-          if (max_index > 0) {
-            if (first_al) first_al = false; else cout << ' ';
-            if (is_reverse)
-              cout << j << '-' << (max_index - 1);
-            else
-              cout << (max_index - 1) << '-' << j;
-          }
-        } else {
-          if (use_null) {
-            double count = probs[0] / sum;
-            c0 += count;
-            s2t.Increment(kNULL, f_j, count);
-          }
-          for (unsigned i = 1; i <= src.size(); ++i) {
-            const double p = probs[i] / sum;
-            s2t.Increment(src[i-1], f_j, p);
-            emp_feat += DiagonalAlignment::Feature(j, i, trg.size(), src.size()) * p;
+          for (const string& output : outputs) {
+            cout << output;
           }
         }
-        likelihood += log(sum);
+        buffer.clear();
       }
-      if (final_iteration) cout << endl;
+    } // end data loop
+    if (buffer.size() > 0) {
+      UpdateFromPairs(buffer, lc, iter, final_iteration, use_null, kNULL,
+          prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
+      if (final_iteration) {
+        for (const string& output : outputs) {
+          cout << output;
+        }
+      }
+      buffer.clear();
     }
 
     // log(e) = 1.0
     double base2_likelihood = likelihood / log(2);
 
-    if (flag) { cerr << endl; }
-    if (iter == 0) {
-      mean_srclen_multiplier = tot_len_ratio / lc;
-      cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
+    if (flag) {
+      cerr << endl;
     }
-    emp_feat /= toks;
+    emp_feat /= n_target_tokens;
     cerr << "  log_e likelihood: " << likelihood << endl;
     cerr << "  log_2 likelihood: " << base2_likelihood << endl;
     cerr << "     cross entropy: " << (-base2_likelihood / denom) << endl;
     cerr << "        perplexity: " << pow(2.0, -base2_likelihood / denom) << endl;
-    cerr << "      posterior p0: " << c0 / toks << endl;
+    cerr << "      posterior p0: " << c0 / n_target_tokens << endl;
     cerr << " posterior al-feat: " << emp_feat << endl;
     //cerr << "     model tension: " << mod_feat / toks << endl;
     cerr << "       size counts: " << size_counts.size() << endl;
@@ -250,13 +376,13 @@ int main(int argc, char** argv) {
       if (favor_diagonal && optimize_tension && iter > 0) {
         for (int ii = 0; ii < 8; ++ii) {
           double mod_feat = 0;
-          unordered_map<pair<short,short>,unsigned,PairHash>::iterator it = size_counts.begin();
-          for(; it != size_counts.end(); ++it) {
-            const pair<short,short>& p = it->first;
+#pragma omp parallel for reduction(+:mod_feat)
+          for(size_t i = 0; i < size_counts.size(); ++i) {
+            const pair<short,short>& p = size_counts[i].first;
             for (short j = 1; j <= p.first; ++j)
-              mod_feat += it->second * DiagonalAlignment::ComputeDLogZ(j, p.first, p.second, diagonal_tension);
+              mod_feat += size_counts[i].second * DiagonalAlignment::ComputeDLogZ(j, p.first, p.second, diagonal_tension);
           }
-          mod_feat /= toks;
+          mod_feat /= n_target_tokens;
           cerr << "  " << ii + 1 << "  model al-feat: " << mod_feat << " (tension=" << diagonal_tension << ")\n";
           diagonal_tension += (emp_feat - mod_feat) * 20.0;
           if (diagonal_tension <= 0.1) diagonal_tension = 0.1;
@@ -270,7 +396,6 @@ int main(int argc, char** argv) {
         s2t.Normalize();
       //prob_align_null *= 0.8; // XXX
       //prob_align_null += (c0 / toks) * 0.2;
-      prob_align_not_null = 1.0 - prob_align_null;
     }
   }
   if (!conditional_probability_filename.empty()) {

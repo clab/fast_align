@@ -20,7 +20,15 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 ## Compiling and using `fast_align`
 
-Building `fast_align` requires only a C++ compiler; this can be done by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
+Building `fast_align` requires only a modern C++ compiler and these libraries:
+
+    libtcmalloc (part of Google's perftools) and libsparsehash
+
+Install these on Ubuntu:
+    
+    sudo apt-get install libgoogle-perftools-dev libsparsehash-dev
+
+Now compile by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
 
 `fast_align` generates *asymmetric* alignments (i.e., by treating either the left or right language in the parallel corpus as primary language being modeled, slightly different alignments will be generated). The usually recommended way to generate *source–target* (left language–right language) alignments is:
 

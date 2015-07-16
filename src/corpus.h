@@ -8,9 +8,10 @@
 #include <vector>
 #include <set>
 #include "src/port.h"
+#include <google/sparse_hash_map>
 
 class Dict {
- typedef std::unordered_map<std::string, unsigned, std::hash<std::string> > Map;
+ typedef google::sparse_hash_map<std::string, unsigned, std::hash<std::string> > Map;
  public:
   Dict() : b0_("<bad0>") {
     words_.reserve(1000);
