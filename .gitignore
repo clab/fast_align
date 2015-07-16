@@ -3,6 +3,8 @@
 *.lo
 *.o
 fast_align
+Makefile
+build/
 
 # Compiled Dynamic libraries
 *.so

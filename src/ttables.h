@@ -19,8 +19,8 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
-#include <google/sparse_hash_map>
 
+#include "src/hashtables.h"
 #include "src/port.h"
 
 struct Md {
@@ -41,7 +41,6 @@ class TTable {
  public:
   TTable() : frozen_(false), probs_initialized_(false) {}
 //  typedef std::unordered_map<unsigned, double> Word2Double;
-  typedef google::sparse_hash_map<unsigned, double> Word2Double;
 
   typedef std::vector<Word2Double> Word2Word2Double;
 

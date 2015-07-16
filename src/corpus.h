@@ -7,11 +7,10 @@
 #include <fstream>
 #include <vector>
 #include <set>
+#include "src/hashtables.h"
 #include "src/port.h"
-#include <google/sparse_hash_map>
 
 class Dict {
- typedef google::sparse_hash_map<std::string, unsigned, std::hash<std::string> > Map;
  public:
   Dict() : b0_("<bad0>") {
     words_.reserve(1000);
@@ -44,7 +43,7 @@ class Dict {
   }
 
   inline unsigned Convert(const std::string& word, bool frozen = false) {
-    Map::iterator i = d_.find(word);
+    MAP_TYPE::iterator i = d_.find(word);
     if (i == d_.end()) {
       if (frozen)
         return 0;
@@ -63,7 +62,7 @@ class Dict {
  private:
   std::string b0_;
   std::vector<std::string> words_;
-  Map d_;
+  MAP_TYPE d_;
 };
 
 void ReadFromFile(const std::string& filename,
