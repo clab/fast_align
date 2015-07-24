@@ -14,4 +14,5 @@ if (OPENMP_FOUND)
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif(OPENMP_FOUND)
 
-add_executable(fast_align src/fast_align.cc)
+add_executable(fast_align src/fast_align.cc src/ttables.cc)
+add_executable(atools src/alignment_io.cc src/atools.cc)

@@ -8,8 +8,6 @@ If you use this software, please cite:
 
 The source code in this repository is provided under the terms of the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
-A variant of `fast_align` is included in the [`cdec` translation system](http://www.cdec-decoder.org/). It uses the same model and produces identical alignments, but it has a few extra features for online alignment with pre-built models.
-
 ## Input format
 
 Input to `fast_align` must be tokenized and aligned into parallel sentences. Each line is a source language sentence and its target language translation, separated by a triple pipe symbol with leading and trailing white space (` ||| `). An example 3-sentence German–English parallel corpus is:
@@ -20,15 +18,24 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 ## Compiling and using `fast_align`
 
-Building `fast_align` requires only a modern C++ compiler and these libraries:
+Building `fast_align` requires a modern C++ compiler and the [CMake]() build system. Additionally, the following libraries can be used to obtain better performance
 
-    libtcmalloc (part of Google's perftools) and libsparsehash
+ * OpenMP (included with some compilers, such as GCC)
+ * libtcmalloc (part of Google's perftools)
+ * libsparsehash
 
-Install these on Ubuntu:
+To install these on Ubuntu:
     
     sudo apt-get install libgoogle-perftools-dev libsparsehash-dev
 
-Now compile by typing `make` at the command line prompt. Run `fast_align` to see a list of command line options.
+To compile, do the following
+
+    mkdir build
+    cd build
+    cmake ..
+    make
+
+Run `fast_align` to see a list of command line options.
 
 `fast_align` generates *asymmetric* alignments (i.e., by treating either the left or right language in the parallel corpus as primary language being modeled, slightly different alignments will be generated). The usually recommended way to generate *source–target* (left language–right language) alignments is:
 
@@ -38,7 +45,9 @@ The usually recommended way to generate *target–source* alignments is to just 
 
     ./fast_align -i text.fr-en -d -o -v -r > reverse.align
 
-Using [other](http://www.cdec-decoder.org/) [tools](http://www.statmt.org/moses/), the generated forward and reverse alignments can be *symmetrized* into a (often higher quality) single alignment using intersection or union operations, as well as using a variety of more specialized heuristic criteria.
+These can be symmetrized using the included `atools` command using a variety of standard symmetrization heuristics, for example:
+
+    ./atools -i forward.align -j reverse.align -c grow-diag-final-and
 
 ## Output
 

@@ -19,9 +19,10 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 #include "src/hashtables.h"
-#include "src/port.h"
+#include "src/corpus.h"
 
 struct Md {
   static double digamma(double x) {
@@ -35,6 +36,10 @@ struct Md {
     result += log(x)+(1./24.)*xx2-(7.0/960.0)*xx4+(31.0/8064.0)*xx4*xx2-(127.0/30720.0)*xx4*xx4;
     return result;
   }
+  static inline double log_poisson(unsigned x, const double& lambda) {
+    assert(lambda > 0.0);
+    return std::log(lambda) * x - lgamma(x + 1) - lambda;
+  }
 };
 
 class TTable {
@@ -46,6 +51,17 @@ class TTable {
 
   inline double prob(const unsigned e, const unsigned f) const {
     return probs_initialized_ ? ttable[e].find(f)->second : 1e-9;
+  }
+
+  inline double safe_prob(const int& e, const int& f) const {
+    if (e < static_cast<int>(ttable.size())) {
+      const Word2Double& cpd = ttable[e];
+      const Word2Double::const_iterator it = cpd.find(f);
+      if (it == cpd.end()) return 1e-9;
+      return it->second;
+    } else {
+      return 1e-9;
+    }
   }
 
   inline void SetMaxE(const unsigned e) {
@@ -122,15 +138,20 @@ class TTable {
     }
     return *this;
   }
-  void ExportToFile(const char* filename, Dict& d) {
+  void ExportToFile(const char* filename, Dict& d, double BEAM_THRESHOLD) const {
     std::ofstream file(filename);
     for (unsigned i = 0; i < ttable.size(); ++i) {
       const std::string& a = d.Convert(i);
-      Word2Double& cpd = ttable[i];
-      for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it) {
-        const std::string& b = d.Convert(it->first);
-        double c = log(it->second);
-        file << a << '\t' << b << '\t' << c << std::endl;
+      const Word2Double& cpd = ttable[i];
+      double max_p = -1;
+      for (auto& it : cpd)
+        if (it.second > max_p) max_p = it.second;
+      const double threshold = max_p * BEAM_THRESHOLD;
+      for (auto& it : cpd) {
+        const std::string& b = d.Convert(it.first);
+        double c = log(it.second);
+        if (c >= threshold)
+          file << a << '\t' << b << '\t' << c << std::endl;
       }
     }
     file.close();
@@ -149,6 +170,9 @@ class TTable {
   Word2Word2Double counts;
   bool frozen_; // Disallow new e,f pairs to be added to counts
   bool probs_initialized_; // If we can use the values in probs
+
+ public:
+  void DeserializeLogProbsFromText(std::istream* in, Dict& d);
 };
 
 #endif

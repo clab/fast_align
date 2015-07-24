@@ -65,7 +65,7 @@ class Dict {
   MAP_TYPE d_;
 };
 
-void ReadFromFile(const std::string& filename,
+inline void ReadFromFile(const std::string& filename,
                   Dict* d,
                   std::vector<std::vector<unsigned> >* src,
                   std::set<unsigned>* src_vocab) {

@@ -21,7 +21,6 @@
 #include <getopt.h>
 #include <sstream>
 
-//#include "src/port.h"
 #include "src/corpus.h"
 #include "src/ttables.h"
 #include "src/da.h"
@@ -37,8 +36,8 @@ struct PairHash {
 Dict d; // integerization map
 
 void ParseLine(const string& line,
-              vector<unsigned>* src,
-              vector<unsigned>* trg) {
+               vector<unsigned>* src,
+               vector<unsigned>* trg) {
   static const unsigned kDIV = d.Convert("|||");
   vector<unsigned> tmp;
   src->clear();
@@ -58,9 +57,12 @@ void ParseLine(const string& line,
 
 string input;
 string conditional_probability_filename = "";
+string input_model_file = "";
+double mean_srclen_multiplier = 1.0;
 int is_reverse = 0;
 int ITERATIONS = 5;
 int favor_diagonal = 0;
+double beam_threshold = -4.0;
 double prob_align_null = 0.08;
 double diagonal_tension = 4.0;
 int optimize_tension = 0;
@@ -68,18 +70,22 @@ int variational_bayes = 0;
 double alpha = 0.01;
 int no_null_word = 0;
 size_t thread_buffer_size = 10000;
+bool force_align = false;
 struct option options[] = {
     {"input",             required_argument, 0,                  'i'},
     {"reverse",           no_argument,       &is_reverse,        1  },
     {"iterations",        required_argument, 0,                  'I'},
-    {"favor_diagonal",    no_argument,       &favor_diagonal,    0  },
-    {"p0",                required_argument, 0,                  'p'},
+    {"favor_diagonal",    no_argument,       &favor_diagonal,    1  },
+    {"force_align",       required_argument, 0,                  'f'},
+    {"mean_srclen_multiplier", required_argument, 0,             'm'},
+    {"beam_threshold",    required_argument, 0,                  't'},
+    {"p0",                required_argument, 0,                  'q'},
     {"diagonal_tension",  required_argument, 0,                  'T'},
     {"optimize_tension",  no_argument,       &optimize_tension,  1  },
     {"variational_bayes", no_argument,       &variational_bayes, 1  },
     {"alpha",             required_argument, 0,                  'a'},
     {"no_null_word",      no_argument,       &no_null_word,      1  },
-    {"conditional_probabilities", required_argument, 0,          'c'},
+    {"conditional_probabilities", required_argument, 0,          'p'},
     {"thread_buffer_size", required_argument, 0,                 'b'},
     {0,0,0,0}
 };
@@ -87,20 +93,24 @@ struct option options[] = {
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:dp:T:ova:Nc:b", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b", options, &oi);
     if (c == -1) break;
+    cerr << "ARG=" << (char)c << endl;
     switch(c) {
       case 'i': input = optarg; break;
       case 'r': is_reverse = 1; break;
       case 'I': ITERATIONS = atoi(optarg); break;
       case 'd': favor_diagonal = 1; break;
-      case 'p': prob_align_null = atof(optarg); break;
+      case 'f': force_align = 1; conditional_probability_filename = optarg; break;
+      case 'm': mean_srclen_multiplier = atof(optarg); break;
+      case 't': beam_threshold = atof(optarg); break;
+      case 'q': prob_align_null = atof(optarg); break;
       case 'T': diagonal_tension = atof(optarg); break;
       case 'o': optimize_tension = 1; break;
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
-      case 'c': conditional_probability_filename = optarg; break;
+      case 'p': conditional_probability_filename = optarg; break;
       case 'b': thread_buffer_size = atoi(optarg); break;
       default: return false;
     }
@@ -224,7 +234,6 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   unordered_map<pair<short, short>, unsigned, PairHash> size_counts_;
   vector<vector<unsigned>> insert_buffer;
   size_t insert_buffer_items = 0;
-  double mean_srclen_multiplier = 0;
   vector<unsigned> src, trg;
   string line;
   bool flag = false;
@@ -289,7 +298,7 @@ int main(int argc, char** argv) {
          << "  -c: Output conditional probability table\n"
          << " Advanced options:\n"
          << "  -I: number of iterations in EM training (default = 5)\n"
-         << "  -p: p_null parameter (default = 0.08)\n"
+         << "  -q: p_null parameter (default = 0.08)\n"
          << "  -N: No null word\n"
          << "  -a: alpha parameter for optional Dirichlet prior (default = 0.01)\n"
          << "  -T: starting lambda for diagonal distance parameter (default = 4)\n";
@@ -307,8 +316,14 @@ int main(int argc, char** argv) {
   double tot_len_ratio = 0;
   double n_target_tokens = 0;
 
-  InitialPass(kNULL, use_null, &s2t, &n_target_tokens, &tot_len_ratio, &size_counts);
-  s2t.Freeze();
+  if (force_align) {
+    ifstream in(conditional_probability_filename.c_str());
+    s2t.DeserializeLogProbsFromText(&in, d);
+    ITERATIONS = 0; // don't do any learning
+  } else {
+    InitialPass(kNULL, use_null, &s2t, &n_target_tokens, &tot_len_ratio, &size_counts);
+    s2t.Freeze();
+  }
 
   for (int iter = 0; iter < ITERATIONS; ++iter) {
     const bool final_iteration = (iter == (ITERATIONS - 1));
@@ -394,13 +409,73 @@ int main(int argc, char** argv) {
         s2t.NormalizeVB(alpha);
       else
         s2t.Normalize();
-      //prob_align_null *= 0.8; // XXX
-      //prob_align_null += (c0 / toks) * 0.2;
     }
   }
-  if (!conditional_probability_filename.empty()) {
+  if (!force_align && !conditional_probability_filename.empty()) {
     cerr << "conditional probabilities: " << conditional_probability_filename << endl;
-    s2t.ExportToFile(conditional_probability_filename.c_str(), d);
+    s2t.ExportToFile(conditional_probability_filename.c_str(), d, beam_threshold);
+  }
+  if (force_align) {
+    istream* pin = &cin;
+    if (input != "-" && !input.empty())
+      pin = new ifstream(input.c_str());
+    istream& in = *pin;
+    string line;
+    vector<unsigned> src, trg;
+    int lc = 0;
+    double tlp = 0;
+    while(getline(in, line)) {
+      ++lc;
+      ParseLine(line, &src, &trg);
+      for (auto s : src) cout << d.Convert(s) << ' ';
+      cout << "|||";
+      for (auto t : trg) cout << ' ' << d.Convert(t);
+      cout << " |||";
+      if (is_reverse)
+        swap(src, trg);
+      if (src.size() == 0 || trg.size() == 0) {
+        cerr << "Error in line " << lc << endl;
+        return 1;
+      }
+      double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+
+      // compute likelihood
+      for (unsigned j = 0; j < trg.size(); ++j) {
+        unsigned f_j = trg[j];
+        double sum = 0;
+        int a_j = 0;
+        double max_pat = 0;
+        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+        if (use_null) {
+          if (favor_diagonal) prob_a_i = prob_align_null;
+          max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
+          sum += max_pat;
+        }
+        double az = 0;
+        if (favor_diagonal)
+          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+        for (unsigned i = 1; i <= src.size(); ++i) {
+          if (favor_diagonal)
+            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
+          double pat = s2t.safe_prob(src[i-1], f_j) * prob_a_i;
+          if (pat > max_pat) { max_pat = pat; a_j = i; }
+          sum += pat;
+        }
+        log_prob += log(sum);
+        if (true) {
+          if (a_j > 0) {
+            cout << ' ';
+            if (is_reverse)
+              cout << j << '-' << (a_j - 1);
+            else
+              cout << (a_j - 1) << '-' << j;
+          }
+        }
+      }
+      tlp += log_prob;
+      cout << " ||| " << log_prob << endl << flush;
+    } // loop over test set sentences
+    cerr << "TOTAL LOG PROB " << tlp << endl;
   }
   return 0;
 }
