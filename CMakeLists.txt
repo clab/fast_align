@@ -16,3 +16,4 @@ endif(OPENMP_FOUND)
 
 add_executable(fast_align src/fast_align.cc src/ttables.cc)
 add_executable(atools src/alignment_io.cc src/atools.cc)
+configure_file(src/force_align.py force_align.py COPYONLY)
