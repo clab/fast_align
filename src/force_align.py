@@ -11,9 +11,9 @@ class Aligner:
 
     def __init__(self, fwd_params, fwd_err, rev_params, rev_err, heuristic='grow-diag-final-and'):
 
-        build_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        fast_align = os.path.join(build_root, 'build', 'fast_align')
-        atools = os.path.join(build_root, 'build', 'atools')
+        build_root = os.path.dirname(os.path.abspath(__file__))
+        fast_align = os.path.join(build_root, 'fast_align')
+        atools = os.path.join(build_root, 'atools')
 
         (fwd_T, fwd_m) = self.read_err(fwd_err)
         (rev_T, rev_m) = self.read_err(rev_err)
@@ -24,7 +24,6 @@ class Aligner:
 
         self.fwd_align = popen_io(fwd_cmd)
         self.rev_align = popen_io(rev_cmd)
-        print tools_cmd
         self.tools = popen_io(tools_cmd)
 
     def align(self, line):
