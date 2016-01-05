@@ -71,6 +71,7 @@ double alpha = 0.01;
 int no_null_word = 0;
 size_t thread_buffer_size = 10000;
 bool force_align = false;
+int print_scores = 0;
 struct option options[] = {
     {"input",             required_argument, 0,                  'i'},
     {"reverse",           no_argument,       &is_reverse,        1  },
@@ -93,7 +94,7 @@ struct option options[] = {
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:s", options, &oi);
     if (c == -1) break;
     cerr << "ARG=" << (char)c << endl;
     switch(c) {
@@ -112,6 +113,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'N': no_null_word = 1; break;
       case 'p': conditional_probability_filename = optarg; break;
       case 'b': thread_buffer_size = atoi(optarg); break;
+      case 's': print_scores = 1; break;
       default: return false;
     }
   }
@@ -203,6 +205,11 @@ void UpdateFromPairs(const vector<string>& lines, const int lc, const int iter,
       likelihood_ += log(sum);
     }
     if (final_iteration) {
+      if (print_scores) {
+        double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+        log_prob += likelihood_;
+        oss << " ||| " << log_prob;
+      }
       oss << endl;
       (*outputs)[line_idx] = oss.str();
     }
@@ -301,7 +308,8 @@ int main(int argc, char** argv) {
          << "  -q: p_null parameter (default = 0.08)\n"
          << "  -N: No null word\n"
          << "  -a: alpha parameter for optional Dirichlet prior (default = 0.01)\n"
-         << "  -T: starting lambda for diagonal distance parameter (default = 4)\n";
+         << "  -T: starting lambda for diagonal distance parameter (default = 4)\n"
+         << "  -s: print alignment scores (alignment ||| score, disabled by default)\n";
     return 1;
   }
   const bool use_null = !no_null_word;
