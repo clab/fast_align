@@ -106,7 +106,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'm': mean_srclen_multiplier = atof(optarg); break;
       case 't': beam_threshold = atof(optarg); break;
       case 'q': prob_align_null = atof(optarg); break;
-      case 'T': diagonal_tension = atof(optarg); break;
+      case 'T': favor_diagonal = 1; diagonal_tension = atof(optarg); break;
       case 'o': optimize_tension = 1; break;
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
