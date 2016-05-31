@@ -146,6 +146,7 @@ void UpdateFromPairs(const vector<string>& lines, const int lc, const int iter,
     ostringstream oss; // collect output in last iteration
     vector<double> probs(src.size() + 1);
     bool first_al = true;  // used when printing alignments
+    double local_likelihood = 0.0;
     for (unsigned j = 0; j < trg.size(); ++j) {
       const unsigned& f_j = trg[j];
       double sum = 0;
@@ -202,12 +203,13 @@ void UpdateFromPairs(const vector<string>& lines, const int lc, const int iter,
           emp_feat_ += DiagonalAlignment::Feature(j, i, trg.size(), src.size()) * p;
         }
       }
-      likelihood_ += log(sum);
+      local_likelihood += log(sum);
     }
+    likelihood_ += local_likelihood;
     if (final_iteration) {
       if (print_scores) {
         double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
-        log_prob += likelihood_;
+        log_prob += local_likelihood;
         oss << " ||| " << log_prob;
       }
       oss << endl;
