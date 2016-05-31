@@ -146,7 +146,7 @@ class TTable {
       double max_p = -1;
       for (auto& it : cpd)
         if (it.second > max_p) max_p = it.second;
-      const double threshold = max_p * BEAM_THRESHOLD;
+      const double threshold = - log(max_p) * BEAM_THRESHOLD;
       for (auto& it : cpd) {
         const std::string& b = d.Convert(it.first);
         double c = log(it.second);
