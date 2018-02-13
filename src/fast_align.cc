@@ -301,7 +301,7 @@ int main(int argc, char** argv) {
          << " Standard options ([USE] = strongly recommended):\n"
          << "  -i: [REQ] Input parallel corpus\n"
          << "  -v: [USE] Use Dirichlet prior on lexical translation distributions\n"
-         << "  -d: [USE] Favor alignment points close to the monotonic diagonoal\n"
+         << "  -d: [USE] Favor alignment points close to the monotonic diagonal\n"
          << "  -o: [USE] Optimize how close to the diagonal alignment points should be\n"
          << "  -r: Run alignment in reverse (condition on target and predict source)\n"
          << "  -c: Output conditional probability table\n"
