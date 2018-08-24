@@ -18,7 +18,12 @@
 #include <cmath>
 #include <utility>
 #include <fstream>
+#ifndef _MSC_VER
 #include <getopt.h>
+#else
+#define NOMINMAX
+#include "getopt.h"
+#endif
 #include <sstream>
 
 #include "src/corpus.h"
@@ -225,7 +230,11 @@ inline void AddTranslationOptions(vector<vector<unsigned> >& insert_buffer,
     TTable* s2t) {
   s2t->SetMaxE(insert_buffer.size()-1);
 #pragma omp parallel for schedule(dynamic)
+#ifndef _MSC_VER
   for (unsigned e = 0; e < insert_buffer.size(); ++e) {
+#else
+  for (int e = 0; e < insert_buffer.size(); ++e) {
+#endif
     for (unsigned f : insert_buffer[e]) {
       s2t->Insert(e, f);
     }
@@ -402,7 +411,11 @@ int main(int argc, char** argv) {
         for (int ii = 0; ii < 8; ++ii) {
           double mod_feat = 0;
 #pragma omp parallel for reduction(+:mod_feat)
+#ifndef _MSC_VER
           for(size_t i = 0; i < size_counts.size(); ++i) {
+#else
+              for (int i = 0; i < size_counts.size(); ++i) {
+#endif
             const pair<short,short>& p = size_counts[i].first;
             for (short j = 1; j <= p.first; ++j)
               mod_feat += size_counts[i].second * DiagonalAlignment::ComputeDLogZ(j, p.first, p.second, diagonal_tension);

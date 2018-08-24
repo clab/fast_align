@@ -84,7 +84,11 @@ class TTable {
   void NormalizeVB(const double alpha) {
     ttable.swap(counts);
 #pragma omp parallel for schedule(dynamic)
+#ifndef _MSC_VER
     for (unsigned i = 0; i < ttable.size(); ++i) {
+#else
+    for (int i = 0; i < ttable.size(); ++i) { // MSVC only supports OpenMP 2.0, which doesn't allow signed types here
+#endif
       double tot = 0;
       Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
@@ -101,7 +105,11 @@ class TTable {
   void Normalize() {
     ttable.swap(counts);
 #pragma omp parallel for schedule(dynamic)
+#ifndef _MSC_VER
     for (unsigned i = 0; i < ttable.size(); ++i) {
+#else
+    for (int i = 0; i < ttable.size(); ++i) {
+#endif
       double tot = 0;
       Word2Double& cpd = ttable[i];
       for (Word2Double::iterator it = cpd.begin(); it != cpd.end(); ++it)
@@ -159,7 +167,11 @@ class TTable {
  private:
   void ClearCounts() {
 #pragma omp parallel for schedule(dynamic)
+#ifndef _MSC_VER
     for (size_t i=0; i<counts.size();++i) {
+#else
+      for(int i = 0; i<counts.size(); ++i) {
+#endif
       for (auto& cnt : counts[i]) {
         cnt.second = 0.0;
       }

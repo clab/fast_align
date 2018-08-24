@@ -6,7 +6,11 @@
 #include <queue>
 #include <map>
 #include <set>
+#ifndef _MSC_VER
 #include <getopt.h>
+#else
+#include "getopt.h"
+#endif
 
 #include "alignment_io.h"
 
