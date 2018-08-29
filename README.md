@@ -49,6 +49,22 @@ These can be symmetrized using the included `atools` command using a variety of 
 
     ./atools -i forward.align -j reverse.align -c grow-diag-final-and
 
+
+## Compiling for windows
+
+To build 64-bit binaries with libsparsehash on Windows using Visual Studio 2017, the following recipe works:
+
+
+    cd d:\src
+    git clone https://github.com/clab/fast_align.git
+    git clone https://github.com/sparsehash/sparsehash.git
+    cd d:\src\fast_align
+    mkdir build64
+    cd build64
+    cmake -G "Visual Studio 15 2017 Win64" -D SPARSEHASH_INCLUDE_DIR=d:\src\sparsehash\src ..
+    cmake --build build64 --config Release
+    
+
 ## Output
 
 `fast_align` produces outputs in the widely-used `i-j` “Pharaoh format,” where a pair `i-j` indicates that the <i>i</i>th word (zero-indexed) of the left language (by convention, the *source* language) is aligned to the <i>j</i>th word of the right sentence (by convention, the *target* language). For example, a good alignment of the above German–English corpus would be:
