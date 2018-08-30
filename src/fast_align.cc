@@ -25,6 +25,8 @@
 #include "getopt.h"
 #endif
 #include <sstream>
+#include <omp.h>
+
 
 #include "src/corpus.h"
 #include "src/ttables.h"
@@ -61,6 +63,10 @@ void ParseLine(const string& line,
 }
 
 string input;
+ostream* outputStream = &cout;
+//used if user specifies -O option to output to file
+ofstream outputFileStream;
+
 string conditional_probability_filename = "";
 string input_model_file = "";
 double mean_srclen_multiplier = 1.0;
@@ -93,13 +99,15 @@ struct option options[] = {
     {"no_null_word",      no_argument,       &no_null_word,      1  },
     {"conditional_probabilities", required_argument, 0,          'p'},
     {"thread_buffer_size", required_argument, 0,                 'b'},
+    {"output_file", required_argument, 0, 'O'},
+    {"num_threads", required_argument, 0, 'n'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:s", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:sO:n:", options, &oi);
     if (c == -1) break;
     cerr << "ARG=" << (char)c << endl;
     switch(c) {
@@ -113,9 +121,11 @@ bool InitCommandLine(int argc, char** argv) {
       case 'q': prob_align_null = atof(optarg); break;
       case 'T': favor_diagonal = 1; diagonal_tension = atof(optarg); break;
       case 'o': optimize_tension = 1; break;
+      case 'O': outputFileStream.open(optarg); outputStream = &outputFileStream; break;
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
+      case 'n': omp_set_num_threads(atoi(optarg)); break;
       case 'p': conditional_probability_filename = optarg; break;
       case 'b': thread_buffer_size = atoi(optarg); break;
       case 's': print_scores = 1; break;
@@ -313,7 +323,9 @@ int main(int argc, char** argv) {
          << "  -d: [USE] Favor alignment points close to the monotonic diagonoal\n"
          << "  -o: [USE] Optimize how close to the diagonal alignment points should be\n"
          << "  -r: Run alignment in reverse (condition on target and predict source)\n"
-         << "  -c: Output conditional probability table\n"
+         << "  -p: Output conditional probability table\n"
+         << "  -O: Output to path instead of stdout\n"
+         << "  -n: Use this many threads\n"
          << " Advanced options:\n"
          << "  -I: number of iterations in EM training (default = 5)\n"
          << "  -q: p_null parameter (default = 0.08)\n"
@@ -374,7 +386,7 @@ int main(int argc, char** argv) {
             prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
         if (final_iteration) {
           for (const string& output : outputs) {
-            cout << output;
+            *outputStream << output;
           }
         }
         buffer.clear();
@@ -385,7 +397,7 @@ int main(int argc, char** argv) {
           prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
       if (final_iteration) {
         for (const string& output : outputs) {
-          cout << output;
+          *outputStream << output;
         }
       }
       buffer.clear();

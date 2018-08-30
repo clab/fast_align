@@ -20,22 +20,27 @@ struct option options[] = {
     {"input_1",                 required_argument, 0,                  'i'},
     {"input_2",                 required_argument, 0,                  'j'},
     {"command",                 required_argument, 0,                  'c'},
+    {"outfile",                 required_argument, 0,                  'o'},
     {0,0,0,0}
 };
 
 string input_1;
 string input_2;
 string command;
+ofstream outfileStream;
+ostream* outstream = &cout;
+
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:j:c:", options, &oi);
+    int c = getopt_long(argc, argv, "i:j:c:o:", options, &oi);
     if (c == -1) break;
     switch(c) {
       case 'i': input_1 = optarg; break;
       case 'j': input_2 = optarg; break;
       case 'c': command = optarg; break;
+      case 'o': outfileStream.open(optarg); outstream = &outfileStream; break;
       default: return false;
     }
   }
@@ -312,7 +317,7 @@ int main(int argc, char **argv) {
   AddCommand<GDFACommand>();
   AddCommand<FMeasureCommand>();
   if (!InitCommandLine(argc, argv)) {
-    cerr << "Usage: " << argv[0] << " -c COMMAND -i FILE1.AL [-j FILE2.AL]\n";
+    cerr << "Usage: " << argv[0] << " -c COMMAND -i FILE1.AL [-j FILE2.AL] [-o OUTPATH]\n";
     cerr << "Valid options for COMMAND:";
     for (auto it : commands)
       cerr << ' ' << it.first;
@@ -372,7 +377,7 @@ int main(int argc, char **argv) {
     }
     
     if (cmd.Result() == 1) {
-      AlignmentIO::SerializePharaohFormat(*out, &cout);
+      AlignmentIO::SerializePharaohFormat(*out, outstream);
     }
   }
   if (cmd.Result() == 2)
