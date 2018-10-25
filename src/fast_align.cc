@@ -71,6 +71,7 @@ string conditional_probability_filename = "";
 string input_model_file = "";
 double mean_srclen_multiplier = 1.0;
 int is_reverse = 0;
+int print_alignments_only = 0;
 int ITERATIONS = 5;
 int favor_diagonal = 0;
 double beam_threshold = -4.0;
@@ -101,16 +102,18 @@ struct option options[] = {
     {"thread_buffer_size", required_argument, 0,                 'b'},
     {"output_file", required_argument, 0, 'O'},
     {"num_threads", required_argument, 0, 'n'},
+    {"print_alignments_only",no_argument,    &print_alignments_only,'A'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:sO:n:", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:sO:n:A", options, &oi);
     if (c == -1) break;
     cerr << "ARG=" << (char)c << endl;
     switch(c) {
+      case 'A': print_alignments_only = 1; break;
       case 'i': input = optarg; break;
       case 'r': is_reverse = 1; break;
       case 'I': ITERATIONS = atoi(optarg); break;
@@ -316,7 +319,7 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
 
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
-    cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
+      cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
          << " Standard options ([USE] = strongly recommended):\n"
          << "  -i: [REQ] Input parallel corpus\n"
          << "  -v: [USE] Use Dirichlet prior on lexical translation distributions\n"
@@ -332,7 +335,13 @@ int main(int argc, char** argv) {
          << "  -N: No null word\n"
          << "  -a: alpha parameter for optional Dirichlet prior (default = 0.01)\n"
          << "  -T: starting lambda for diagonal distance parameter (default = 4)\n"
-         << "  -s: print alignment scores (alignment ||| score, disabled by default)\n";
+         << "  -s: print alignment scores (alignment ||| score, disabled by default)\n"
+         << "  -f: force align, using specified input probability table (obtained via training with -p switch)\n"
+         << "  -A: print alignments only (only applies to forced align, where default is to dump src|||tgt|||align|||p(align)"
+         << "  -m: set mean source length multiplier\n"
+         << "  -t: set beam threshold\n"
+         << "  -a: set alpha parameter\n"
+         << "  -b: set thread buffer size\n";
     return 1;
   }
   const bool use_null = !no_null_word;
@@ -462,10 +471,13 @@ int main(int argc, char** argv) {
     while(getline(in, line)) {
       ++lc;
       ParseLine(line, &src, &trg);
-      for (auto s : src) cout << d.Convert(s) << ' ';
-      cout << "|||";
-      for (auto t : trg) cout << ' ' << d.Convert(t);
-      cout << " |||";
+      if (!print_alignments_only)
+      {
+        for (auto s : src) *outputStream << d.Convert(s) << ' ';
+        *outputStream << "|||";
+        for (auto t : trg) *outputStream << ' ' << d.Convert(t);
+        *outputStream << " |||";
+      }
       if (is_reverse)
         swap(src, trg);
       if (src.size() == 0 || trg.size() == 0) {
@@ -473,6 +485,7 @@ int main(int argc, char** argv) {
         return 1;
       }
       double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+      bool first = true;
 
       // compute likelihood
       for (unsigned j = 0; j < trg.size(); ++j) {
@@ -499,16 +512,24 @@ int main(int argc, char** argv) {
         log_prob += log(sum);
         if (true) {
           if (a_j > 0) {
-            cout << ' ';
-            if (is_reverse)
-              cout << j << '-' << (a_j - 1);
+            if (!first) {
+              *outputStream << ' ';
+            }
+            if (is_reverse) {
+              *outputStream << j << '-' << (a_j - 1);
+            }
             else
-              cout << (a_j - 1) << '-' << j;
+              *outputStream << (a_j - 1) << '-' << j;
+            first = false;
           }
         }
       }
       tlp += log_prob;
-      cout << " ||| " << log_prob << endl << flush;
+      if(!print_alignments_only)
+      { 
+        *outputStream << " ||| " << log_prob;
+      }
+      *outputStream  << endl << flush;
     } // loop over test set sentences
     cerr << "TOTAL LOG PROB " << tlp << endl;
   }
