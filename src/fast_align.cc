@@ -531,72 +531,60 @@ int main(int argc, char** argv) {
     vector<unsigned> src, trg;
     int lc = 0;
     double tlp = 0;
-    while(getline(in, line)) {
-      ++lc;
-	  double log_prob = ForceAlign(line, lc, prob_align_not_null, use_null, *outputStream, kNULL, s2t);
-	  /*
-      ParseLine(line, &src, &trg);
-      if (!print_alignments_only)
-      {
-        for (auto s : src) *outputStream << d.Convert(s) << ' ';
-        *outputStream << "|||";
-        for (auto t : trg) *outputStream << ' ' << d.Convert(t);
-        *outputStream << " |||";
-      }
-      if (is_reverse)
-        swap(src, trg);
-      if (src.size() == 0 || trg.size() == 0) {
-        cerr << "Error in line " << lc << endl;
-        return 1;
-      }
-      double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
-      bool first = true;
 
-      // compute likelihood
-      for (unsigned j = 0; j < trg.size(); ++j) {
-        unsigned f_j = trg[j];
-        double sum = 0;
-        int a_j = 0;
-        double max_pat = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
-          if (favor_diagonal) prob_a_i = prob_align_null;
-          max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
-          sum += max_pat;
-        }
-        double az = 0;
-        if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
-        for (unsigned i = 1; i <= src.size(); ++i) {
-          if (favor_diagonal)
-            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
-          double pat = s2t.safe_prob(src[i-1], f_j) * prob_a_i;
-          if (pat > max_pat) { max_pat = pat; a_j = i; }
-          sum += pat;
-        }
-        log_prob += log(sum);
-        if (true) {
-          if (a_j > 0) {
-            if (!first) {
-              *outputStream << ' ';
-            }
-            if (is_reverse) {
-              *outputStream << j << '-' << (a_j - 1);
-            }
-            else
-              *outputStream << (a_j - 1) << '-' << j;
-            first = false;
-          }
-        }
-      }*/
-      tlp += log_prob;
-      if(!print_alignments_only)
-      { 
-        *outputStream << " ||| " << log_prob;
-      }
-      *outputStream  << endl << flush;
-    } // loop over test set sentences
+	vector<string> buffer;
+	vector<string> outputs;
+	vector<double> logprobs;
+
+	while (true) {
+		getline(in, line);
+		if (!in) break;
+		++lc;
+
+		outputs.resize(thread_buffer_size);
+		logprobs.resize(thread_buffer_size);
+		buffer.push_back(line);
+		if (buffer.size() >= thread_buffer_size) {
+			for (int i = 0; i < buffer.size(); ++i)
+			{
+				stringstream ss;
+				logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ss, kNULL, s2t);
+				outputs[i] = ss.str().c_str();
+			}
+			for (int i = 0; i < buffer.size(); ++i)
+			{
+				*outputStream << outputs[i] << endl;
+				if (!print_alignments_only)
+				{
+					*outputStream << " ||| " << logprobs[i];
+				}
+				tlp += logprobs[i];
+			}
+			
+			buffer.clear();
+		}
+	}
+	if (buffer.size() > 0)
+	{
+		// TODO: Move this to a separate fn instead of copy-pasting the logic
+		for (int i = 0; i < buffer.size(); ++i)
+		{
+			stringstream ss;
+			logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ss, kNULL, s2t);
+			outputs[i] = ss.str().c_str();
+		}
+		for (int i = 0; i < buffer.size(); ++i)
+		{
+			*outputStream << outputs[i] << endl;
+			if (!print_alignments_only)
+			{
+				*outputStream << " ||| " << logprobs[i];
+			}
+			tlp += logprobs[i];
+		}
+	}
+	*outputStream << endl << flush;
     cerr << "TOTAL LOG PROB " << tlp << endl;
-  }
+    } // loop over test set sentences
   return 0;
 }
