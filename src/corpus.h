@@ -22,7 +22,7 @@ class Dict {
     return (x == ' ' || x == '\t');
   }
 
-  inline void ConvertWhitespaceDelimitedLine(const std::string& line, std::vector<unsigned>* out) {
+  inline void ConvertWhitespaceDelimitedLine(const std::string& line, std::vector<unsigned>* out, bool frozen=false) {
     size_t cur = 0;
     size_t last = 0;
     int state = 0;
@@ -30,7 +30,7 @@ class Dict {
     while(cur < line.size()) {
       if (is_ws(line[cur++])) {
         if (state == 0) continue;
-        out->push_back(Convert(line.substr(last, cur - last - 1)));
+        out->push_back(Convert(line.substr(last, cur - last - 1), frozen));
         state = 0;
       } else {
         if (state == 1) continue;

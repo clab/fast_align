@@ -45,12 +45,13 @@ Dict d; // integerization map
 
 void ParseLine(const string& line,
                vector<unsigned>* src,
-               vector<unsigned>* trg) {
+               vector<unsigned>* trg, 
+				bool frozen=false) {
   static const unsigned kDIV = d.Convert("|||");
   vector<unsigned> tmp;
   src->clear();
   trg->clear();
-  d.ConvertWhitespaceDelimitedLine(line, &tmp);
+  d.ConvertWhitespaceDelimitedLine(line, &tmp, frozen);
   unsigned i = 0;
   while (i < tmp.size() && tmp[i] != kDIV) {
     src->push_back(tmp[i]);
@@ -318,10 +319,10 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
-double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, std::ostream& outstream, const unsigned kNULL, const TTable& s2t)
+double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, string& ret, const unsigned kNULL, const TTable& s2t)
 {
 	vector<unsigned> src, trg;
-	ParseLine(line, &src, &trg);
+	ParseLine(line, &src, &trg, true);
 	if (!print_alignments_only)
 	{
 		for (auto s : src) *outputStream << d.Convert(s) << ' ';
@@ -336,6 +337,8 @@ double ForceAlign(const string& line, int lc, double prob_align_not_null, bool u
 	}
 	double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
 	bool first = true;
+
+	ret.reserve(1024);
 
 	// compute likelihood
 	for (unsigned j = 0; j < trg.size(); ++j) {
@@ -360,19 +363,32 @@ double ForceAlign(const string& line, int lc, double prob_align_not_null, bool u
 			sum += pat;
 		}
 		log_prob += log(sum);
+		char convBuff[16];
 		if (true) {
 			if (a_j > 0) {
 				if (!first) {
 					//*outputStream << ' ';
-					outstream << ' ';
+					//outstream << ' ';
+					ret.append(" ");
 				}
 				if (is_reverse) {
 					//*outputStream << j << '-' << (a_j - 1);
-					outstream << j << '-' << (a_j - 1);
+					//outstream << j << '-' << (a_j - 1);
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(a_j - 1, convBuff, 10);
+					ret.append(convBuff);
 				}
-				else
+				else {
 					//*outputStream << (a_j - 1) << '-' << j;
-					outstream << (a_j - 1) << '-' << j;
+					//outstream << (a_j - 1) << '-' << j;
+					itoa(a_j = 1, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+				}
 				first = false;
 			}
 		}
@@ -548,9 +564,9 @@ int main(int argc, char** argv) {
 #pragma omp parallel for schedule(dynamic)
 			for (int i = 0; i < buffer.size(); ++i)
 			{
-				stringstream ss;
-				logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ss, kNULL, s2t);
-				outputs[i] = ss.str().c_str();
+				string ret;
+				logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ret, kNULL, s2t);
+				outputs[i] = ret;
 			}
 			for (int i = 0; i < buffer.size(); ++i)
 			{
@@ -571,9 +587,9 @@ int main(int argc, char** argv) {
 #pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < buffer.size(); ++i)
 		{
-			stringstream ss;
-			logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ss, kNULL, s2t);
-			outputs[i] = ss.str().c_str();
+			string ret;
+			logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ret, kNULL, s2t);
+			outputs[i] = ret;
 		}
 		for (int i = 0; i < buffer.size(); ++i)
 		{
