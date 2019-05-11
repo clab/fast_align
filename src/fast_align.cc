@@ -545,6 +545,7 @@ int main(int argc, char** argv) {
 		logprobs.resize(thread_buffer_size);
 		buffer.push_back(line);
 		if (buffer.size() >= thread_buffer_size) {
+#pragma omp parallel for schedule(dynamic)
 			for (int i = 0; i < buffer.size(); ++i)
 			{
 				stringstream ss;
@@ -567,6 +568,7 @@ int main(int argc, char** argv) {
 	if (buffer.size() > 0)
 	{
 		// TODO: Move this to a separate fn instead of copy-pasting the logic
+#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < buffer.size(); ++i)
 		{
 			stringstream ss;
