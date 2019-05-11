@@ -14,6 +14,7 @@
 //
 
 #include <iostream>
+#include <sstream>
 #include <cstdlib>
 #include <cmath>
 #include <utility>
@@ -317,6 +318,68 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
+double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, std::ostream& outstream, const unsigned kNULL, const TTable& s2t)
+{
+	vector<unsigned> src, trg;
+	ParseLine(line, &src, &trg);
+	if (!print_alignments_only)
+	{
+		for (auto s : src) *outputStream << d.Convert(s) << ' ';
+		*outputStream << "|||";
+		for (auto t : trg) *outputStream << ' ' << d.Convert(t);
+		*outputStream << " |||";
+	}
+	if (is_reverse)
+		swap(src, trg);
+	if (src.size() == 0 || trg.size() == 0) {
+		cerr << "Error in line " << lc << endl;
+	}
+	double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+	bool first = true;
+
+	// compute likelihood
+	for (unsigned j = 0; j < trg.size(); ++j) {
+		unsigned f_j = trg[j];
+		double sum = 0;
+		int a_j = 0;
+		double max_pat = 0;
+		double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+		if (use_null) {
+			if (favor_diagonal) prob_a_i = prob_align_null;
+			max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
+			sum += max_pat;
+		}
+		double az = 0;
+		if (favor_diagonal)
+			az = DiagonalAlignment::ComputeZ(j + 1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+		for (unsigned i = 1; i <= src.size(); ++i) {
+			if (favor_diagonal)
+				prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
+			double pat = s2t.safe_prob(src[i - 1], f_j) * prob_a_i;
+			if (pat > max_pat) { max_pat = pat; a_j = i; }
+			sum += pat;
+		}
+		log_prob += log(sum);
+		if (true) {
+			if (a_j > 0) {
+				if (!first) {
+					//*outputStream << ' ';
+					outstream << ' ';
+				}
+				if (is_reverse) {
+					//*outputStream << j << '-' << (a_j - 1);
+					outstream << j << '-' << (a_j - 1);
+				}
+				else
+					//*outputStream << (a_j - 1) << '-' << j;
+					outstream << (a_j - 1) << '-' << j;
+				first = false;
+			}
+		}
+	}
+	return log_prob;
+}
+
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
       cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
@@ -470,6 +533,8 @@ int main(int argc, char** argv) {
     double tlp = 0;
     while(getline(in, line)) {
       ++lc;
+	  double log_prob = ForceAlign(line, lc, prob_align_not_null, use_null, *outputStream, kNULL, s2t);
+	  /*
       ParseLine(line, &src, &trg);
       if (!print_alignments_only)
       {
@@ -523,7 +588,7 @@ int main(int argc, char** argv) {
             first = false;
           }
         }
-      }
+      }*/
       tlp += log_prob;
       if(!print_alignments_only)
       { 
