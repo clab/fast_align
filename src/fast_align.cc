@@ -322,6 +322,9 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
 double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, string& ret, const unsigned kNULL, const TTable& s2t)
 {
 	vector<unsigned> src, trg;
+	int totalSpaces = std::count_if(line.begin(), line.end(), [](char c) { return c == ' '; });
+	src.reserve(totalSpaces);
+	trg.reserve(totalSpaces);
 	ParseLine(line, &src, &trg, true);
 	if (!print_alignments_only)
 	{
