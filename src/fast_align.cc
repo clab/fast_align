@@ -370,13 +370,9 @@ double ForceAlign(const string& line, int lc, double prob_align_not_null, bool u
 		if (true) {
 			if (a_j > 0) {
 				if (!first) {
-					//*outputStream << ' ';
-					//outstream << ' ';
 					ret.append(" ");
 				}
 				if (is_reverse) {
-					//*outputStream << j << '-' << (a_j - 1);
-					//outstream << j << '-' << (a_j - 1);
 					itoa(j, convBuff, 10);
 					ret.append(convBuff);
 					ret.append("-");
@@ -384,9 +380,7 @@ double ForceAlign(const string& line, int lc, double prob_align_not_null, bool u
 					ret.append(convBuff);
 				}
 				else {
-					//*outputStream << (a_j - 1) << '-' << j;
-					//outstream << (a_j - 1) << '-' << j;
-					itoa(a_j = 1, convBuff, 10);
+					itoa(a_j - 1, convBuff, 10);
 					ret.append(convBuff);
 					ret.append("-");
 					itoa(j, convBuff, 10);
@@ -604,7 +598,7 @@ int main(int argc, char** argv) {
 			tlp += logprobs[i];
 		}
 	}
-	*outputStream << endl << flush;
+	*outputStream << flush;
     cerr << "TOTAL LOG PROB " << tlp << endl;
     } // loop over test set sentences
   return 0;
