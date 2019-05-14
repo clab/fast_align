@@ -393,6 +393,30 @@ double ForceAlign(const string& line, int lc, double prob_align_not_null, bool u
 	return log_prob;
 }
 
+double AlignBuffer(const vector<string>& buffer, int& lc, double prob_align_not_null, bool use_null, const unsigned int kNULL, TTable& s2t)
+{
+	double tlp = 0.0;
+	vector<double> logprobs(buffer.size());
+	vector<string> outputs(buffer.size());
+#pragma omp parallel for schedule(dynamic)
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		string ret;
+		logprobs[i] = ForceAlign(buffer[i], lc + i, prob_align_not_null, use_null, ret, kNULL, s2t);
+		outputs[i] = ret;
+	}
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		*outputStream << outputs[i] << endl;
+		if (!print_alignments_only)
+		{
+			*outputStream << " ||| " << logprobs[i];
+		}
+		tlp += logprobs[i];
+	}
+	return tlp;
+}
+
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
       cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
@@ -546,57 +570,21 @@ int main(int argc, char** argv) {
     double tlp = 0;
 
 	vector<string> buffer;
-	vector<string> outputs;
-	vector<double> logprobs;
 
 	while (true) {
 		getline(in, line);
 		if (!in) break;
 		++lc;
 
-		outputs.resize(thread_buffer_size);
-		logprobs.resize(thread_buffer_size);
 		buffer.push_back(line);
 		if (buffer.size() >= thread_buffer_size) {
-#pragma omp parallel for schedule(dynamic)
-			for (int i = 0; i < buffer.size(); ++i)
-			{
-				string ret;
-				logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ret, kNULL, s2t);
-				outputs[i] = ret;
-			}
-			for (int i = 0; i < buffer.size(); ++i)
-			{
-				*outputStream << outputs[i] << endl;
-				if (!print_alignments_only)
-				{
-					*outputStream << " ||| " << logprobs[i];
-				}
-				tlp += logprobs[i];
-			}
-			
+			tlp += AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
 			buffer.clear();
 		}
 	}
 	if (buffer.size() > 0)
 	{
-		// TODO: Move this to a separate fn instead of copy-pasting the logic
-#pragma omp parallel for schedule(dynamic)
-		for (int i = 0; i < buffer.size(); ++i)
-		{
-			string ret;
-			logprobs[i] = ForceAlign(buffer[i], lc, prob_align_not_null, use_null, ret, kNULL, s2t);
-			outputs[i] = ret;
-		}
-		for (int i = 0; i < buffer.size(); ++i)
-		{
-			*outputStream << outputs[i] << endl;
-			if (!print_alignments_only)
-			{
-				*outputStream << " ||| " << logprobs[i];
-			}
-			tlp += logprobs[i];
-		}
+			tlp+= AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
 	}
 	*outputStream << flush;
     cerr << "TOTAL LOG PROB " << tlp << endl;
