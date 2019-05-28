@@ -14,6 +14,7 @@
 //
 
 #include <iostream>
+#include <sstream>
 #include <cstdlib>
 #include <cmath>
 #include <utility>
@@ -44,12 +45,13 @@ Dict d; // integerization map
 
 void ParseLine(const string& line,
                vector<unsigned>* src,
-               vector<unsigned>* trg) {
+               vector<unsigned>* trg, 
+				bool frozen=false) {
   static const unsigned kDIV = d.Convert("|||");
   vector<unsigned> tmp;
   src->clear();
   trg->clear();
-  d.ConvertWhitespaceDelimitedLine(line, &tmp);
+  d.ConvertWhitespaceDelimitedLine(line, &tmp, frozen);
   unsigned i = 0;
   while (i < tmp.size() && tmp[i] != kDIV) {
     src->push_back(tmp[i]);
@@ -317,6 +319,104 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
+double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, string& ret, const unsigned kNULL, const TTable& s2t)
+{
+	vector<unsigned> src, trg;
+	int totalSpaces = std::count_if(line.begin(), line.end(), [](char c) { return c == ' '; });
+	src.reserve(totalSpaces);
+	trg.reserve(totalSpaces);
+	ParseLine(line, &src, &trg, true);
+	if (!print_alignments_only)
+	{
+		for (auto s : src) *outputStream << d.Convert(s) << ' ';
+		*outputStream << "|||";
+		for (auto t : trg) *outputStream << ' ' << d.Convert(t);
+		*outputStream << " |||";
+	}
+	if (is_reverse)
+		swap(src, trg);
+	if (src.size() == 0 || trg.size() == 0) {
+		cerr << "Error in line " << lc << endl;
+	}
+	double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+	bool first = true;
+
+	ret.reserve(1024);
+
+	// compute likelihood
+	for (unsigned j = 0; j < trg.size(); ++j) {
+		unsigned f_j = trg[j];
+		double sum = 0;
+		int a_j = 0;
+		double max_pat = 0;
+		double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+		if (use_null) {
+			if (favor_diagonal) prob_a_i = prob_align_null;
+			max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
+			sum += max_pat;
+		}
+		double az = 0;
+		if (favor_diagonal)
+			az = DiagonalAlignment::ComputeZ(j + 1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+		for (unsigned i = 1; i <= src.size(); ++i) {
+			if (favor_diagonal)
+				prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
+			double pat = s2t.safe_prob(src[i - 1], f_j) * prob_a_i;
+			if (pat > max_pat) { max_pat = pat; a_j = i; }
+			sum += pat;
+		}
+		log_prob += log(sum);
+		char convBuff[16];
+		if (true) {
+			if (a_j > 0) {
+				if (!first) {
+					ret.append(" ");
+				}
+				if (is_reverse) {
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(a_j - 1, convBuff, 10);
+					ret.append(convBuff);
+				}
+				else {
+					itoa(a_j - 1, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+				}
+				first = false;
+			}
+		}
+	}
+	return log_prob;
+}
+
+double AlignBuffer(const vector<string>& buffer, int& lc, double prob_align_not_null, bool use_null, const unsigned int kNULL, TTable& s2t)
+{
+	double tlp = 0.0;
+	vector<double> logprobs(buffer.size());
+	vector<string> outputs(buffer.size());
+#pragma omp parallel for schedule(dynamic)
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		string ret;
+		logprobs[i] = ForceAlign(buffer[i], lc + i, prob_align_not_null, use_null, ret, kNULL, s2t);
+		outputs[i] = ret;
+	}
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		*outputStream << outputs[i] << endl;
+		if (!print_alignments_only)
+		{
+			*outputStream << " ||| " << logprobs[i];
+		}
+		tlp += logprobs[i];
+	}
+	return tlp;
+}
+
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
       cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
@@ -468,70 +568,26 @@ int main(int argc, char** argv) {
     vector<unsigned> src, trg;
     int lc = 0;
     double tlp = 0;
-    while(getline(in, line)) {
-      ++lc;
-      ParseLine(line, &src, &trg);
-      if (!print_alignments_only)
-      {
-        for (auto s : src) *outputStream << d.Convert(s) << ' ';
-        *outputStream << "|||";
-        for (auto t : trg) *outputStream << ' ' << d.Convert(t);
-        *outputStream << " |||";
-      }
-      if (is_reverse)
-        swap(src, trg);
-      if (src.size() == 0 || trg.size() == 0) {
-        cerr << "Error in line " << lc << endl;
-        return 1;
-      }
-      double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
-      bool first = true;
 
-      // compute likelihood
-      for (unsigned j = 0; j < trg.size(); ++j) {
-        unsigned f_j = trg[j];
-        double sum = 0;
-        int a_j = 0;
-        double max_pat = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
-          if (favor_diagonal) prob_a_i = prob_align_null;
-          max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
-          sum += max_pat;
-        }
-        double az = 0;
-        if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
-        for (unsigned i = 1; i <= src.size(); ++i) {
-          if (favor_diagonal)
-            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
-          double pat = s2t.safe_prob(src[i-1], f_j) * prob_a_i;
-          if (pat > max_pat) { max_pat = pat; a_j = i; }
-          sum += pat;
-        }
-        log_prob += log(sum);
-        if (true) {
-          if (a_j > 0) {
-            if (!first) {
-              *outputStream << ' ';
-            }
-            if (is_reverse) {
-              *outputStream << j << '-' << (a_j - 1);
-            }
-            else
-              *outputStream << (a_j - 1) << '-' << j;
-            first = false;
-          }
-        }
-      }
-      tlp += log_prob;
-      if(!print_alignments_only)
-      { 
-        *outputStream << " ||| " << log_prob;
-      }
-      *outputStream  << endl << flush;
-    } // loop over test set sentences
+	vector<string> buffer;
+
+	while (true) {
+		getline(in, line);
+		if (!in) break;
+		++lc;
+
+		buffer.push_back(line);
+		if (buffer.size() >= thread_buffer_size) {
+			tlp += AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
+			buffer.clear();
+		}
+	}
+	if (buffer.size() > 0)
+	{
+			tlp+= AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
+	}
+	*outputStream << flush;
     cerr << "TOTAL LOG PROB " << tlp << endl;
-  }
+    } // loop over test set sentences
   return 0;
 }
