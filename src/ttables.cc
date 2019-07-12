@@ -17,7 +17,7 @@ void TTable::DeserializeLogProbsFromText(istream* in, Dict& d) {
     if (e.empty()) break;
     ++c;
     unsigned ie = d.Convert(e);
-    if (ie >= static_cast<int>(ttable.size())) ttable.resize(ie + 1);
+    if (ie >= static_cast<unsigned int>(ttable.size())) ttable.resize(ie + 1);
     ttable[ie][d.Convert(f)] = exp(p);
   }
   cerr << "Loaded " << c << " translation parameters.\n";
