@@ -14,12 +14,20 @@
 //
 
 #include <iostream>
+#include <sstream>
 #include <cstdlib>
 #include <cmath>
 #include <utility>
 #include <fstream>
+#ifndef _MSC_VER
 #include <getopt.h>
+#else
+#define NOMINMAX
+#include "getopt.h"
+#endif
 #include <sstream>
+#include <omp.h>
+
 
 #include "src/corpus.h"
 #include "src/ttables.h"
@@ -37,12 +45,13 @@ Dict d; // integerization map
 
 void ParseLine(const string& line,
                vector<unsigned>* src,
-               vector<unsigned>* trg) {
+               vector<unsigned>* trg, 
+				bool frozen=false) {
   static const unsigned kDIV = d.Convert("|||");
   vector<unsigned> tmp;
   src->clear();
   trg->clear();
-  d.ConvertWhitespaceDelimitedLine(line, &tmp);
+  d.ConvertWhitespaceDelimitedLine(line, &tmp, frozen);
   unsigned i = 0;
   while (i < tmp.size() && tmp[i] != kDIV) {
     src->push_back(tmp[i]);
@@ -56,10 +65,15 @@ void ParseLine(const string& line,
 }
 
 string input;
+ostream* outputStream = &cout;
+//used if user specifies -O option to output to file
+ofstream outputFileStream;
+
 string conditional_probability_filename = "";
 string input_model_file = "";
 double mean_srclen_multiplier = 1.0;
 int is_reverse = 0;
+int print_alignments_only = 0;
 int ITERATIONS = 5;
 int favor_diagonal = 0;
 double beam_threshold = -4.0;
@@ -88,16 +102,20 @@ struct option options[] = {
     {"no_null_word",      no_argument,       &no_null_word,      1  },
     {"conditional_probabilities", required_argument, 0,          'p'},
     {"thread_buffer_size", required_argument, 0,                 'b'},
+    {"output_file", required_argument, 0, 'O'},
+    {"num_threads", required_argument, 0, 'n'},
+    {"print_alignments_only",no_argument,    &print_alignments_only,'A'},
     {0,0,0,0}
 };
 
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:s", options, &oi);
+    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:sO:n:A", options, &oi);
     if (c == -1) break;
     cerr << "ARG=" << (char)c << endl;
     switch(c) {
+      case 'A': print_alignments_only = 1; break;
       case 'i': input = optarg; break;
       case 'r': is_reverse = 1; break;
       case 'I': ITERATIONS = atoi(optarg); break;
@@ -108,9 +126,11 @@ bool InitCommandLine(int argc, char** argv) {
       case 'q': prob_align_null = atof(optarg); break;
       case 'T': favor_diagonal = 1; diagonal_tension = atof(optarg); break;
       case 'o': optimize_tension = 1; break;
+      case 'O': outputFileStream.open(optarg); outputStream = &outputFileStream; break;
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
+      case 'n': omp_set_num_threads(atoi(optarg)); break;
       case 'p': conditional_probability_filename = optarg; break;
       case 'b': thread_buffer_size = atoi(optarg); break;
       case 's': print_scores = 1; break;
@@ -225,7 +245,11 @@ inline void AddTranslationOptions(vector<vector<unsigned> >& insert_buffer,
     TTable* s2t) {
   s2t->SetMaxE(insert_buffer.size()-1);
 #pragma omp parallel for schedule(dynamic)
+#ifndef _MSC_VER
   for (unsigned e = 0; e < insert_buffer.size(); ++e) {
+#else
+  for (int e = 0; e < insert_buffer.size(); ++e) {
+#endif
     for (unsigned f : insert_buffer[e]) {
       s2t->Insert(e, f);
     }
@@ -295,23 +319,129 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
+double ForceAlign(const string& line, int lc, double prob_align_not_null, bool use_null, string& ret, const unsigned kNULL, const TTable& s2t)
+{
+	vector<unsigned> src, trg;
+	int totalSpaces = std::count_if(line.begin(), line.end(), [](char c) { return c == ' '; });
+	src.reserve(totalSpaces);
+	trg.reserve(totalSpaces);
+	ParseLine(line, &src, &trg, true);
+	if (!print_alignments_only)
+	{
+		for (auto s : src) *outputStream << d.Convert(s) << ' ';
+		*outputStream << "|||";
+		for (auto t : trg) *outputStream << ' ' << d.Convert(t);
+		*outputStream << " |||";
+	}
+	if (is_reverse)
+		swap(src, trg);
+	if (src.size() == 0 || trg.size() == 0) {
+		cerr << "Error in line " << lc << endl;
+	}
+	double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
+	bool first = true;
+
+	ret.reserve(1024);
+
+	// compute likelihood
+	for (unsigned j = 0; j < trg.size(); ++j) {
+		unsigned f_j = trg[j];
+		double sum = 0;
+		int a_j = 0;
+		double max_pat = 0;
+		double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
+		if (use_null) {
+			if (favor_diagonal) prob_a_i = prob_align_null;
+			max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
+			sum += max_pat;
+		}
+		double az = 0;
+		if (favor_diagonal)
+			az = DiagonalAlignment::ComputeZ(j + 1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
+		for (unsigned i = 1; i <= src.size(); ++i) {
+			if (favor_diagonal)
+				prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
+			double pat = s2t.safe_prob(src[i - 1], f_j) * prob_a_i;
+			if (pat > max_pat) { max_pat = pat; a_j = i; }
+			sum += pat;
+		}
+		log_prob += log(sum);
+		char convBuff[16];
+		if (true) {
+			if (a_j > 0) {
+				if (!first) {
+					ret.append(" ");
+				}
+				if (is_reverse) {
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(a_j - 1, convBuff, 10);
+					ret.append(convBuff);
+				}
+				else {
+					itoa(a_j - 1, convBuff, 10);
+					ret.append(convBuff);
+					ret.append("-");
+					itoa(j, convBuff, 10);
+					ret.append(convBuff);
+				}
+				first = false;
+			}
+		}
+	}
+	return log_prob;
+}
+
+double AlignBuffer(const vector<string>& buffer, int& lc, double prob_align_not_null, bool use_null, const unsigned int kNULL, TTable& s2t)
+{
+	double tlp = 0.0;
+	vector<double> logprobs(buffer.size());
+	vector<string> outputs(buffer.size());
+#pragma omp parallel for schedule(dynamic)
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		string ret;
+		logprobs[i] = ForceAlign(buffer[i], lc + i, prob_align_not_null, use_null, ret, kNULL, s2t);
+		outputs[i] = ret;
+	}
+	for (int i = 0; i < buffer.size(); ++i)
+	{
+		*outputStream << outputs[i] << endl;
+		if (!print_alignments_only)
+		{
+			*outputStream << " ||| " << logprobs[i];
+		}
+		tlp += logprobs[i];
+	}
+	return tlp;
+}
+
 int main(int argc, char** argv) {
   if (!InitCommandLine(argc, argv)) {
-    cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
+      cerr << "Usage: " << argv[0] << " -i file.fr-en\n"
          << " Standard options ([USE] = strongly recommended):\n"
          << "  -i: [REQ] Input parallel corpus\n"
          << "  -v: [USE] Use Dirichlet prior on lexical translation distributions\n"
          << "  -d: [USE] Favor alignment points close to the monotonic diagonoal\n"
          << "  -o: [USE] Optimize how close to the diagonal alignment points should be\n"
          << "  -r: Run alignment in reverse (condition on target and predict source)\n"
-         << "  -c: Output conditional probability table\n"
+         << "  -p: Output conditional probability table\n"
+         << "  -O: Output to path instead of stdout\n"
+         << "  -n: Use this many threads\n"
          << " Advanced options:\n"
          << "  -I: number of iterations in EM training (default = 5)\n"
          << "  -q: p_null parameter (default = 0.08)\n"
          << "  -N: No null word\n"
          << "  -a: alpha parameter for optional Dirichlet prior (default = 0.01)\n"
          << "  -T: starting lambda for diagonal distance parameter (default = 4)\n"
-         << "  -s: print alignment scores (alignment ||| score, disabled by default)\n";
+         << "  -s: print alignment scores (alignment ||| score, disabled by default)\n"
+         << "  -f: force align, using specified input probability table (obtained via training with -p switch)\n"
+         << "  -A: print alignments only (only applies to forced align, where default is to dump src|||tgt|||align|||p(align)"
+         << "  -m: set mean source length multiplier\n"
+         << "  -t: set beam threshold\n"
+         << "  -a: set alpha parameter\n"
+         << "  -b: set thread buffer size\n";
     return 1;
   }
   const bool use_null = !no_null_word;
@@ -365,7 +495,7 @@ int main(int argc, char** argv) {
             prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
         if (final_iteration) {
           for (const string& output : outputs) {
-            cout << output;
+            *outputStream << output;
           }
         }
         buffer.clear();
@@ -376,7 +506,7 @@ int main(int argc, char** argv) {
           prob_align_not_null, &c0, &emp_feat, &likelihood, &s2t, &outputs);
       if (final_iteration) {
         for (const string& output : outputs) {
-          cout << output;
+          *outputStream << output;
         }
       }
       buffer.clear();
@@ -402,7 +532,11 @@ int main(int argc, char** argv) {
         for (int ii = 0; ii < 8; ++ii) {
           double mod_feat = 0;
 #pragma omp parallel for reduction(+:mod_feat)
+#ifndef _MSC_VER
           for(size_t i = 0; i < size_counts.size(); ++i) {
+#else
+              for (int i = 0; i < size_counts.size(); ++i) {
+#endif
             const pair<short,short>& p = size_counts[i].first;
             for (short j = 1; j <= p.first; ++j)
               mod_feat += size_counts[i].second * DiagonalAlignment::ComputeDLogZ(j, p.first, p.second, diagonal_tension);
@@ -434,58 +568,26 @@ int main(int argc, char** argv) {
     vector<unsigned> src, trg;
     int lc = 0;
     double tlp = 0;
-    while(getline(in, line)) {
-      ++lc;
-      ParseLine(line, &src, &trg);
-      for (auto s : src) cout << d.Convert(s) << ' ';
-      cout << "|||";
-      for (auto t : trg) cout << ' ' << d.Convert(t);
-      cout << " |||";
-      if (is_reverse)
-        swap(src, trg);
-      if (src.size() == 0 || trg.size() == 0) {
-        cerr << "Error in line " << lc << endl;
-        return 1;
-      }
-      double log_prob = Md::log_poisson(trg.size(), 0.05 + src.size() * mean_srclen_multiplier);
 
-      // compute likelihood
-      for (unsigned j = 0; j < trg.size(); ++j) {
-        unsigned f_j = trg[j];
-        double sum = 0;
-        int a_j = 0;
-        double max_pat = 0;
-        double prob_a_i = 1.0 / (src.size() + use_null);  // uniform (model 1)
-        if (use_null) {
-          if (favor_diagonal) prob_a_i = prob_align_null;
-          max_pat = s2t.safe_prob(kNULL, f_j) * prob_a_i;
-          sum += max_pat;
-        }
-        double az = 0;
-        if (favor_diagonal)
-          az = DiagonalAlignment::ComputeZ(j+1, trg.size(), src.size(), diagonal_tension) / prob_align_not_null;
-        for (unsigned i = 1; i <= src.size(); ++i) {
-          if (favor_diagonal)
-            prob_a_i = DiagonalAlignment::UnnormalizedProb(j + 1, i, trg.size(), src.size(), diagonal_tension) / az;
-          double pat = s2t.safe_prob(src[i-1], f_j) * prob_a_i;
-          if (pat > max_pat) { max_pat = pat; a_j = i; }
-          sum += pat;
-        }
-        log_prob += log(sum);
-        if (true) {
-          if (a_j > 0) {
-            cout << ' ';
-            if (is_reverse)
-              cout << j << '-' << (a_j - 1);
-            else
-              cout << (a_j - 1) << '-' << j;
-          }
-        }
-      }
-      tlp += log_prob;
-      cout << " ||| " << log_prob << endl << flush;
-    } // loop over test set sentences
+	vector<string> buffer;
+
+	while (true) {
+		getline(in, line);
+		if (!in) break;
+		++lc;
+
+		buffer.push_back(line);
+		if (buffer.size() >= thread_buffer_size) {
+			tlp += AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
+			buffer.clear();
+		}
+	}
+	if (buffer.size() > 0)
+	{
+			tlp+= AlignBuffer(buffer, lc, prob_align_not_null, use_null, kNULL, s2t);
+	}
+	*outputStream << flush;
     cerr << "TOTAL LOG PROB " << tlp << endl;
-  }
+    } // loop over test set sentences
   return 0;
 }
