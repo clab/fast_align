@@ -42,7 +42,7 @@ void ParseLine(const string& line,
   vector<unsigned> tmp;
   src->clear();
   trg->clear();
-  d.ConvertWhitespaceDelimitedLine(line, &tmp);
+  d.ConvertWhitespaceDelimitedLine(line, kDIV, &tmp);
   unsigned i = 0;
   while (i < tmp.size() && tmp[i] != kDIV) {
     src->push_back(tmp[i]);
@@ -94,7 +94,11 @@ struct option options[] = {
 bool InitCommandLine(int argc, char** argv) {
   while (1) {
     int oi;
-    int c = getopt_long(argc, argv, "i:rI:df:m:t:q:T:ova:Np:b:s", options, &oi);
+    int c = getopt_long(argc,
+                        argv,
+                        "i:rI:df:m:t:q:T:ova:Np:b:s",
+                        options,
+                        &oi);
     if (c == -1) break;
     cerr << "ARG=" << (char)c << endl;
     switch(c) {

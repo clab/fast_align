@@ -22,16 +22,22 @@ class Dict {
     return (x == ' ' || x == '\t');
   }
 
-  inline void ConvertWhitespaceDelimitedLine(const std::string& line, std::vector<unsigned>* out) {
+  inline void ConvertWhitespaceDelimitedLine(
+      const std::string& line,
+      const unsigned separator_id,
+      std::vector<unsigned>* out) {
     size_t cur = 0;
     size_t last = 0;
     int state = 0;
     out->clear();
     while(cur < line.size()) {
-      if (is_ws(line[cur++])) {
-        if (state == 0) continue;
-        out->push_back(Convert(line.substr(last, cur - last - 1)));
-        state = 0;
+      const char cur_char = line[cur++];
+      if (is_ws(cur_char)) {
+        if (state == 1) {
+          out->push_back(Convert(line.substr(last, cur - last - 1)));
+          state = 0;
+        }
+        if (cur_char == '\t') out->push_back(separator_id);
       } else {
         if (state == 1) continue;
         last = cur - 1;
@@ -64,23 +70,5 @@ class Dict {
   std::vector<std::string> words_;
   MAP_TYPE d_;
 };
-
-inline void ReadFromFile(const std::string& filename,
-                  Dict* d,
-                  std::vector<std::vector<unsigned> >* src,
-                  std::set<unsigned>* src_vocab) {
-  src->clear();
-  std::cerr << "Reading from " << filename << std::endl;
-  std::ifstream in(filename.c_str());
-  assert(in);
-  std::string line;
-  int lc = 0;
-  while(getline(in, line)) {
-    ++lc;
-    src->push_back(std::vector<unsigned>());
-    d->ConvertWhitespaceDelimitedLine(line, &src->back());
-    for (unsigned i = 0; i < src->back().size(); ++i) src_vocab->insert(src->back()[i]);
-  }
-}
 
 #endif
