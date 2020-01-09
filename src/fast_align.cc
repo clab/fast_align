@@ -86,7 +86,7 @@ struct option options[] = {
     {"variational_bayes", no_argument,       &variational_bayes, 1  },
     {"alpha",             required_argument, 0,                  'a'},
     {"no_null_word",      no_argument,       &no_null_word,      1  },
-    {"conditional_probabilities", required_argument, 0,          'p'},
+    {"conditional_probabilities", required_argument, 0,          'c'},
     {"thread_buffer_size", required_argument, 0,                 'b'},
     {0,0,0,0}
 };
@@ -115,7 +115,7 @@ bool InitCommandLine(int argc, char** argv) {
       case 'v': variational_bayes = 1; break;
       case 'a': alpha = atof(optarg); break;
       case 'N': no_null_word = 1; break;
-      case 'p': conditional_probability_filename = optarg; break;
+      case 'c': conditional_probability_filename = optarg; break;
       case 'b': thread_buffer_size = atoi(optarg); break;
       case 's': print_scores = 1; break;
       default: return false;
