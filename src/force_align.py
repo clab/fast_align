@@ -30,12 +30,17 @@ class Aligner:
         self.fwd_align.stdin.write('{}\n'.format(line))
         self.rev_align.stdin.write('{}\n'.format(line))
         # f words ||| e words ||| links ||| score
-        fwd_line = self.fwd_align.stdout.readline().split('|||')[2].strip()
-        rev_line = self.rev_align.stdout.readline().split('|||')[2].strip()
+        f = self.fwd_align.stdout.readline().split('|||')[2].strip().split('x')
+        fwd_line = f[0]
+        fwd_score =float(f[1])
+        r = self.rev_align.stdout.readline().split('|||')[2].strip().split('x')
+        rev_line = r[0]
+        rev_score = float(r[1])
+        global_score = (fwd_score+rev_score)/2
         self.tools.stdin.write('{}\n'.format(fwd_line))
         self.tools.stdin.write('{}\n'.format(rev_line))
         al_line = self.tools.stdout.readline().strip()
-        return al_line
+        return al_line, global_score
  
     def close(self):
         self.fwd_align.stdin.close()
@@ -83,7 +88,7 @@ def main():
         line = sys.stdin.readline()
         if not line:
             break
-        sys.stdout.write('{}\n'.format(aligner.align(line.strip())))
+        sys.stdout.write('{} |{}\n'.format(aligner.align(line.strip())[0],aligner.align(line.strip())[1]))
         sys.stdout.flush()
 
     aligner.close()

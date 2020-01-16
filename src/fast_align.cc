@@ -487,6 +487,8 @@ int main(int argc, char** argv) {
         }
       }
       tlp += log_prob;
+      cout <<"x";
+      cout << log_prob;
       cout << " ||| " << log_prob << endl << flush;
     } // loop over test set sentences
     cerr << "TOTAL LOG PROB " << tlp << endl;
