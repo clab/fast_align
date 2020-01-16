@@ -251,6 +251,7 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   string line;
   bool flag = false;
   int lc = 0;
+  int skipped_lines = 0;
   cerr << "INITIAL PASS " << endl;
   while (true) {
     getline(in, line);
@@ -263,7 +264,9 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
     if (is_reverse)
       swap(src, trg);
     if (src.size() == 0 || trg.size() == 0) {
-      cerr << "Error in line " << lc << "\n" << line << endl;
+      cerr << "Error in line " << lc << ". Skipped.\n" << line << endl;
+      skipped_lines++;
+      continue;
     }
     *tot_len_ratio += static_cast<double>(trg.size()) / static_cast<double>(src.size());
     *n_target_tokens += trg.size();
@@ -292,10 +295,11 @@ void InitialPass(const unsigned kNULL, const bool use_null, TTable* s2t,
   }
   AddTranslationOptions(insert_buffer, s2t);
 
-  mean_srclen_multiplier = (*tot_len_ratio) / lc;
+  mean_srclen_multiplier = (*tot_len_ratio) / (lc - skipped_lines);
   if (flag) {
     cerr << endl;
   }
+  cerr << "number of skipped lines = " << skipped_lines << endl;
   cerr << "expected target length = source length * " << mean_srclen_multiplier << endl;
 }
 
