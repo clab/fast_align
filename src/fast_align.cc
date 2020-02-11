@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
   }
   if (!force_align && !conditional_probability_filename.empty()) {
     cerr << "conditional probabilities: " << conditional_probability_filename << endl;
-    s2t.ExportToFile(conditional_probability_filename.c_str(), d, beam_threshold);
+    s2t.ExportToFile(conditional_probability_filename.c_str(), d, pow(10.0, beam_threshold));
   }
   if (force_align) {
     istream* pin = &cin;
