@@ -28,6 +28,10 @@ To install these on Ubuntu:
     
     sudo apt-get install libgoogle-perftools-dev libsparsehash-dev
 
+To install these on Fedora:
+
+    sudo dnf install gperftools-devel sparsehash-devel
+
 To compile, do the following
 
     mkdir build
