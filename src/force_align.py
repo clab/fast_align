@@ -9,7 +9,7 @@ import threading
 # Use the version in realtime for development
 class Aligner:
 
-    def __init__(self, fwd_params, fwd_err, rev_params, rev_err, heuristic='grow-diag-final-and'):
+    def __init__(self, fwd_params, fwd_err, rev_params, rev_err, heuristic='grow-diag-final-and', addscore='None'):
 
         build_root = os.path.dirname(os.path.abspath(__file__))
         fast_align = os.path.join(build_root, 'fast_align')
@@ -25,16 +25,23 @@ class Aligner:
         self.fwd_align = popen_io(fwd_cmd)
         self.rev_align = popen_io(rev_cmd)
         self.tools = popen_io(tools_cmd)
+        self.addscore = addscore
 
     def align(self, line):
         self.fwd_align.stdin.write('{}\n'.format(line))
         self.rev_align.stdin.write('{}\n'.format(line))
         # f words ||| e words ||| links ||| score
-        fwd_line = self.fwd_align.stdout.readline().split('|||')[2].strip()
-        rev_line = self.rev_align.stdout.readline().split('|||')[2].strip()
+        fwd_wholeline = self.fwd_align.stdout.readline()
+        fwd_line = fwd_wholeline.split('|||')[2].strip()
+        fwd_score = fwd_wholeline.split('|||')[3].strip()
+        rev_wholeline = self.rev_align.stdout.readline()
+        rev_line = rev_wholeline.split('|||')[2].strip()
+        rev_score = rev_wholeline.split('|||')[3].strip()
         self.tools.stdin.write('{}\n'.format(fwd_line))
         self.tools.stdin.write('{}\n'.format(rev_line))
         al_line = self.tools.stdout.readline().strip()
+        if self.addscore == 'fwdbwd':
+            return al_line + '\t' + str(fwd_score) + '\t' + str(rev_score)
         return al_line
  
     def close(self):
