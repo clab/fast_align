@@ -82,6 +82,10 @@ def main():
         sys.stderr.write('  {} fwd_params fwd_err rev_params rev_err [heuristic] <in.f-e >out.f-e.gdfa\n'.format(sys.argv[0]))
         sys.stderr.write('\n')
         sys.stderr.write('where heuristic is one of: (intersect union grow-diag grow-diag-final grow-diag-final-and) default=grow-diag-final-and\n')
+        sys.stderr.write('To see alignment scores, run:\n')
+        sys.stderr.write('  {} fwd_params fwd_err rev_params rev_err heuristic fwdbwd <in.f-e >out.f-e.gdfa\n'.format(sys.argv[0]))
+        sys.stderr.write('\n')
+        sys.stderr.write('This will show fwd and bwd align score seperated with tab following the alignment pairs.\n')
         sys.exit(2)
 
     aligner = Aligner(*sys.argv[1:])
