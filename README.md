@@ -18,7 +18,7 @@ Input to `fast_align` must be tokenized and aligned into parallel sentences. Eac
 
 ## Compiling and using `fast_align`
 
-Building `fast_align` requires a modern C++ compiler and the [CMake]() build system. Additionally, the following libraries can be used to obtain better performance
+Building `fast_align` requires a modern C++ compiler and the [CMake](https://cmake.org) build system (version 3.10 or newer). Additionally, the following libraries can be used to obtain better performance
 
  * OpenMP (included with some compilers, such as GCC)
  * libtcmalloc (part of Google's perftools)
